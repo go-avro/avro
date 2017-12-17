@@ -17,6 +17,7 @@ package main
 
 import (
 	"fmt"
+
 	"gopkg.in/avro.v0"
 )
 
@@ -41,20 +42,18 @@ type SomeAnotherType struct {
 
 func main() {
 	// Provide a filename to read and a DatumReader to manage the reading itself
-	specificReader, err := avro.NewDataFileReader("complex.avro", avro.NewSpecificDatumReader())
+	specificReader, err := avro.NewDataFileReader("complex.avro")
 	if err != nil {
 		// Should not actually happen
 		panic(err)
 	}
 
-	for {
+	for specificReader.HasNext() {
 		// Note: should ALWAYS pass in a pointer, e.g. specificReader.Next(SomeComplexType{}) will NOT work
 		obj := new(SomeComplexType)
-		ok, err := specificReader.Next(obj)
-		if !ok {
-			if err != nil {
-				panic(err)
-			}
+		err := specificReader.Next(obj)
+		if err != nil {
+			panic(err)
 			break
 		} else {
 			fmt.Printf("%#v\n", obj)

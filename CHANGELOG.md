@@ -1,5 +1,20 @@
 # Changelog
 
+#### Version 0.3 (2017-12-17)
+
+API Changes:
+
+ - DataFileReader gets some major updates:
+
+   - Can now decode 'deflate' codec files.
+   - Does not read the entire file into memory, for large files and streaming.
+     Also added `Close()` to close the underlying file if applicable.
+   - [breaking] No longer pass a DatumReader to DataFileReader, it creates it for you.
+   - [breaking] `Next()` only returns a single error value, use `HasNext()` in a
+     loop to proceed.
+
+ - Removed Seek and Tell from Decoder, should have no real impact on most applications.
+
 #### Version 0.2 (2017-12-16)
 
 Intention: start making changes towards a 1.0 release.
@@ -12,7 +27,6 @@ API Changes:
    - The `BinaryDecoder` type is now also a private type. `avro.NewBinaryDecoder()`
      now returns a value of the `Decoder` interface.
    - Removed `ReadFixedWithBounds`, removed the use case which dictated it.
-   - Removed `Seek`, and removed seeking from DataFileReader.
    - Add an implementation of BinaryDecoder which can work on an io.Reader
 
  - Rename the `Writer` and `Reader` interfaces to `Marshaler` and `Unmarshaler` to

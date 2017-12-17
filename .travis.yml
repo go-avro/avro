@@ -4,3 +4,12 @@ go:
 - 1.7
 - 1.8
 - 1.9
+
+
+env:
+    global:
+        - AVRO_SUBPATH="src/gopkg.in/avro.v0"
+
+before_install:
+    - "pwd"
+    - "if ! pwd | grep -q 'gopkg.in/avro'; then cd $GOPATH && mkdir -p $(dirname $AVRO_SUBPATH) && pwd && mv $TRAVIS_BUILD_DIR $AVRO_SUBPATH && cd $AVRO_SUBPATH && pwd && export TRAVIS_BUILD_DIR=`pwd`; fi"
