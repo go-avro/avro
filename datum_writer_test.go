@@ -2,6 +2,7 @@ package avro
 
 import (
 	"bytes"
+	"io/ioutil"
 	"math/rand"
 	"testing"
 )
@@ -80,6 +81,7 @@ func TestSpecificDatumWriterComplex(t *testing.T) {
 
 	err := w.Write(complex, enc)
 	assert(t, err, nil)
+	ioutil.WriteFile("corpus/complex1.bin", buffer.Bytes(), 0644)
 	dec := NewBinaryDecoder(buffer.Bytes())
 	r := NewSpecificDatumReader()
 	r.SetSchema(complex.Schema())

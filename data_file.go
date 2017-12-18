@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"compress/flate"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -69,22 +68,8 @@ func readObjFileHeader(dec Decoder) (*objFileHeader, error) {
 }
 
 // NewDataFileReader enables reading an object container file from the filesystem.
-// May return an error if the file contains invalid data or is just missing.
-//
-// The second DatumReader argument is deprecated, only there for source compatibility.
-// Will be removed in an upcoming compatibility break.
-func NewDataFileReader(filename string, ignoreMe ...DatumReader) (*DataFileReader, error) {
-	if len(ignoreMe) > 1 {
-		return nil, errors.New("Not supported sending multiple readers")
-	} else if len(ignoreMe) == 1 {
-		switch ignoreMe[0].(type) {
-		case *GenericDatumReader, *SpecificDatumReader, *anyDatumReader:
-			// nothing
-			break
-		default:
-			return nil, fmt.Errorf("Datum reader input deprecated, don't know what to do with %#v", ignoreMe[0])
-		}
-	}
+// May return an error if the file contains invalid header or is just missing.
+func NewDataFileReader(filename string) (*DataFileReader, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -311,18 +296,12 @@ type DataFileWriter struct {
 	blockEnc   *binaryEncoder
 }
 
-// NewDataFileWriter creates a new DataFileWriter for given output and schema using the given DatumWriter to write the data to that Writer.
-// May return an error if writing fails.
-func NewDataFileWriter(output io.Writer, schema Schema, datumWriter DatumWriter) (writer *DataFileWriter, err error) {
-	encoder := newBinaryEncoder(output)
-	switch w := datumWriter.(type) {
-	case *SpecificDatumWriter:
-		w.SetSchema(schema)
-	case *GenericDatumWriter:
-		w.SetSchema(schema)
-	}
-
+// NewDataFileWriter creates a new DataFileWriter for given output and schema.
+// Will only error on I/O error.
+func NewDataFileWriter(output io.Writer, schema Schema) (writer *DataFileWriter, err error) {
 	sync := []byte("1234567890abcdef") // TODO come up with other sync value
+	datumWriter := NewDatumWriter(schema)
+	encoder := NewBinaryEncoder(output).(*binaryEncoder)
 
 	header := &objFileHeader{
 		Magic: magic,
@@ -335,7 +314,7 @@ func NewDataFileWriter(output io.Writer, schema Schema, datumWriter DatumWriter)
 	headerWriter := NewSpecificDatumWriter()
 	headerWriter.SetSchema(objHeaderSchema)
 	if err = headerWriter.Write(header, encoder); err != nil {
-		return
+		return nil, err
 	}
 	blockBuf := &bytes.Buffer{}
 	writer = &DataFileWriter{
@@ -347,13 +326,13 @@ func NewDataFileWriter(output io.Writer, schema Schema, datumWriter DatumWriter)
 		blockEnc:    newBinaryEncoder(blockBuf),
 	}
 
-	return
+	return writer, err
 }
 
 // Write out a single datum.
 //
 // Encoded datums are buffered internally and will not be written to the
-// underlying io.Writer until Flush() is called.
+// underlying io.Writer until Flush() or Close() is called.
 func (w *DataFileWriter) Write(v interface{}) error {
 	w.blockCount++
 	err := w.datumWriter.Write(v, w.blockEnc)
@@ -361,10 +340,14 @@ func (w *DataFileWriter) Write(v interface{}) error {
 }
 
 // Flush out any previously written datums to our underlying io.Writer.
+// In the underlying avro file format, this writes the buffered datums
+// to a new "data block".
 // Does nothing if no datums had previously been written.
 //
 // It's up to the library user to decide how often to flush; doing it
 // often will spend a lot of time on tiny I/O but save memory.
+// It's also worth considering that a data block creates 20-40 bytes of
+// overhead within the file in deciding how often to flush.
 func (w *DataFileWriter) Flush() error {
 	if w.blockCount > 0 {
 		return w.actuallyFlush()
@@ -397,6 +380,9 @@ func (w *DataFileWriter) actuallyFlush() error {
 // Close this DataFileWriter.
 // This is required to finish out the data file format.
 // After Close() is called, this DataFileWriter cannot be used anymore.
+//
+// This will NOT close the underlying io.Writer, if it's a file, so the user
+// should do that to not leak file handles.
 func (w *DataFileWriter) Close() error {
 	err := w.Flush() // flush anything remaining
 	if err == nil {

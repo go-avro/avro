@@ -39,8 +39,7 @@ var (
 )
 
 func TestPrimitiveBinding(t *testing.T) {
-	datumReader := NewSpecificDatumReader()
-	reader, err := NewDataFileReader("test/primitives.avro", datumReader)
+	reader, err := NewDataFileReader("test/primitives.avro")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,8 +92,7 @@ var (
 )
 
 func TestComplexBinding(t *testing.T) {
-	datumReader := NewSpecificDatumReader()
-	reader, err := NewDataFileReader("test/complex.avro", datumReader)
+	reader, err := NewDataFileReader("test/complex.avro")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,8 +180,7 @@ type testRecord3 struct {
 }
 
 func TestComplexOfComplexBinding(t *testing.T) {
-	datumReader := NewSpecificDatumReader()
-	reader, err := NewDataFileReader("test/complex_of_complex.avro", datumReader)
+	reader, err := NewDataFileReader("test/complex_of_complex.avro")
 	if err != nil {
 		t.Fatal(err)
 	}

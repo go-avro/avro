@@ -8,10 +8,8 @@ import (
 
 func TestDataFileWriter(t *testing.T) {
 	schema := MustParseSchema(primitiveSchemaRaw)
-	datumWriter := NewSpecificDatumWriter()
-	datumWriter.SetSchema(schema)
 	buf := &bytes.Buffer{}
-	dfw, err := NewDataFileWriter(buf, schema, datumWriter)
+	dfw, err := NewDataFileWriter(buf, schema)
 	if err != nil {
 		t.Fatal(err)
 	}

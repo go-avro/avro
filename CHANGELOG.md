@@ -9,9 +9,11 @@ API Changes:
    - Can now decode 'deflate' codec files.
    - Does not read the entire file into memory, for large files and streaming.
      Also added `Close()` to close the underlying file if applicable.
-   - [breaking] No longer pass a DatumReader to DataFileReader, it creates it for you.
-   - [breaking] `Next()` only returns a single error value, use `HasNext()` in a
+   - [semver] No longer pass a DatumReader to DataFileReader, it creates it for you.
+   - [semver] `Next()` only returns a single error value, use `HasNext()` in a
      loop to proceed.
+
+ - [semver] DataFileWriter no longer takes a DatumWriter
 
  - Removed Seek and Tell from Decoder, should have no real impact on most applications.
 

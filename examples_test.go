@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
 
 	avro "gopkg.in/avro.v0"
 )
@@ -11,6 +12,7 @@ import (
 var someSchema avro.Schema
 
 type SomeStruct struct {
+	Id   int
 	Name string
 }
 
@@ -89,4 +91,32 @@ func ExampleDataFileReader() {
 	if err := reader.Err(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func ExampleDataFileWriter() {
+	f, err := os.OpenFile("output.avro", os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	writer, err := avro.NewDataFileWriter(f, someSchema)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	const blockSize = 100 // control how often we write blocks to file
+
+	for i := 0; i < 3000; i++ {
+		if i%blockSize == 0 {
+			writer.Flush() // TODO: should check error
+		}
+
+		value := &SomeStruct{Id: i}
+
+		if err := writer.Write(value); err != nil {
+			log.Print(err)
+			break
+		}
+	}
+
+	writer.Close()
 }
