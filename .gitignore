@@ -21,3 +21,12 @@ _testmain.go
 
 *.exe
 *.test
+
+# Operating system junk
+thumbs.db
+.DS_Store
+
+# Go-fuzz
+*fuzz.zip
+fuzzes/**/crashers
+fuzzes/**/suppressions
