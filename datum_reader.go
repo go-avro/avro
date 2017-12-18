@@ -346,13 +346,15 @@ func (reader sDatumReader) mapEnum(field Schema, dec Decoder) (reflect.Value, er
 }
 
 func (reader sDatumReader) mapUnion(field Schema, reflectField reflect.Value, dec Decoder) (reflect.Value, error) {
-	unionType, err := dec.ReadInt()
+	unionIndex, err := dec.ReadInt()
 	if err != nil {
-		return reflect.ValueOf(unionType), err
+		return reflect.ValueOf(unionIndex), err
 	}
-
-	union := field.(*UnionSchema).Types[unionType]
-	return reader.readValue(union, reflectField, dec)
+	types := field.(*UnionSchema).Types
+	if unionIndex < 0 || int(unionIndex) >= len(types) {
+		return reflect.Value{}, fmt.Errorf("Invalid union index %d", unionIndex)
+	}
+	return reader.readValue(types[unionIndex], reflectField, dec)
 }
 
 func (reader sDatumReader) mapFixed(field Schema, dec Decoder) (reflect.Value, error) {
