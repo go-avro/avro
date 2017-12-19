@@ -118,3 +118,39 @@ type TestRecord struct {
 	IntRecordField    int32
 	FloatRecordField  float32
 }
+
+const PrimitiveSchemaRaw = `{"type":"record","name":"Primitive","namespace":"example.avro","fields":[{"name":"booleanField","type":"boolean"},{"name":"intField","type":"int"},{"name":"longField","type":"long"},{"name":"floatField","type":"float"},{"name":"doubleField","type":"double"},{"name":"bytesField","type":"bytes"},{"name":"stringField","type":"string"},{"name":"nullField","type":"null"}]}`
+
+type Primitive struct {
+	BooleanField bool
+	IntField     int32
+	LongField    int64
+	FloatField   float32
+	DoubleField  float64
+	BytesField   []byte
+	StringField  string
+	NullField    interface{}
+}
+
+var CombinedSchemaRaw = `{
+    "type": "record",
+    "namespace": "example.avro",
+    "name": "CombinedEverything",
+    "fields": [
+        {
+            "name": "complex",
+            "type": ["null", ` + ComplexSchemaRaw + `]
+        },
+        {
+            "name": "primitive",
+            "type": ["null", ` + PrimitiveSchemaRaw + `]
+        }
+    ]
+}`
+
+var CombinedSchema = avro.MustParseSchema(CombinedSchemaRaw)
+
+type Combined struct {
+	Complex   *Complex
+	Primitive *Primitive
+}
