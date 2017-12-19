@@ -324,6 +324,8 @@ func (reader sDatumReader) mapEnum(field Schema, dec Decoder) (reflect.Value, er
 	enumIndex, err := dec.ReadEnum()
 	if err != nil {
 		return reflect.ValueOf(enumIndex), err
+	} else if enumIndex < 0 {
+		return reflect.ValueOf(enumIndex), fmt.Errorf("Enum index %d < 0 in enum %s", enumIndex, field.GetName())
 	}
 
 	schema := field.(*EnumSchema)
@@ -336,6 +338,10 @@ func (reader sDatumReader) mapEnum(field Schema, dec Decoder) (reflect.Value, er
 		enumSymbolsToIndexCache[fullName] = symbolsToIndex
 	}
 	enumSymbolsToIndexCacheLock.Unlock()
+
+	if int(enumIndex) >= len(schema.Symbols) {
+		return reflect.Value{}, fmt.Errorf("Enum index %d too high for enum %s", enumIndex, field.GetName())
+	}
 
 	enum := &GenericEnum{
 		Symbols:        schema.Symbols,
@@ -400,7 +406,9 @@ func (this sDatumReader) fillRecord(field Schema, record reflect.Value, dec Deco
 		recordSchema := field.(*RecordSchema)
 		//ri := record.Interface()
 		for i := 0; i < len(recordSchema.Fields); i++ {
-			this.findAndSet(record, recordSchema.Fields[i], dec)
+			if err := this.findAndSet(record, recordSchema.Fields[i], dec); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -551,6 +559,8 @@ func (reader *GenericDatumReader) mapEnum(field Schema, dec Decoder) (*GenericEn
 	enumIndex, err := dec.ReadEnum()
 	if err != nil {
 		return nil, err
+	} else if enumIndex < 0 {
+		return nil, fmt.Errorf("Enum index %d < 0 in schema %s", enumIndex, field.GetName())
 	}
 
 	schema := field.(*EnumSchema)

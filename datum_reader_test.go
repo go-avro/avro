@@ -615,6 +615,37 @@ func enumRaceTest(t *testing.T, schemas []Schema) {
 
 }
 
+func TestEnumNegativeRegression(t *testing.T) {
+	var playingCard struct {
+		Type *GenericEnum
+	}
+	var genericDest = NewGenericRecord(schemaEnumA)
+	reader := NewDatumReader(schemaEnumA)
+
+	///////////
+	// Scenario 1: negative index
+
+	var buf = []byte{0x7} // This is the encoding of the varint -4
+	// Before this fix, this panicked.
+	err := reader.Read(genericDest, NewBinaryDecoder(buf))
+	assert(t, err.Error(), "Enum index -4 < 0 in schema Type")
+
+	err = reader.Read(&playingCard, NewBinaryDecoder(buf))
+	//assert(t, err.Error(), "Enum index -4 < 0 in schema Type")
+
+	///////////
+	// Scenario 2: too-large positive index
+
+	buf = []byte{0x78} // This is the encoding of the varint 60
+	err = reader.Read(genericDest, NewBinaryDecoder(buf))
+	assert(t, err.Error(), "Enum index invalid!")
+
+	playingCard.Type = nil
+	err = reader.Read(&playingCard, NewBinaryDecoder(buf))
+	assert(t, err.Error(), "Enum index 60 too high for enum Type")
+
+}
+
 func parallelF(numRoutines, numLoops int, f func(routine, loop int)) {
 	var wg sync.WaitGroup
 	wg.Add(numRoutines)
