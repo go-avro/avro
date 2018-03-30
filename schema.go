@@ -921,10 +921,25 @@ func ParseSchema(rawSchema string) (Schema, error) {
 	return ParseSchemaWithRegistry(rawSchema, make(map[string]Schema))
 }
 
+var primitiveSchemas = map[string]Schema{
+	"boolean": new(BooleanSchema),
+	"bytes":   new(BytesSchema),
+	"double":  new(DoubleSchema),
+	"float":   new(FloatSchema),
+	"int":     new(IntSchema),
+	"long":    new(LongSchema),
+	"null":    new(NullSchema),
+	"string":  new(StringSchema),
+}
+
 // ParseSchemaWithRegistry parses a given schema using the provided registry for type lookup.
 // Registry will be filled up during parsing.
 // May return an error if schema is not parsable or has insufficient information about any type.
 func ParseSchemaWithRegistry(rawSchema string, schemas map[string]Schema) (Schema, error) {
+	// check if the provided schema is a primitive schema type
+	if schema, ok := primitiveSchemas[rawSchema]; ok {
+		return schema, nil
+	}
 	var schema interface{}
 	if err := json.Unmarshal([]byte(rawSchema), &schema); err != nil {
 		if syntaxErr, ok := err.(*json.SyntaxError); ok {
