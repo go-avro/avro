@@ -1,6 +1,7 @@
 package avro
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -920,13 +921,32 @@ func ParseSchema(rawSchema string) (Schema, error) {
 	return ParseSchemaWithRegistry(rawSchema, make(map[string]Schema))
 }
 
+var primitiveSchemas = map[string]Schema{
+	"boolean": new(BooleanSchema),
+	"bytes":   new(BytesSchema),
+	"double":  new(DoubleSchema),
+	"float":   new(FloatSchema),
+	"int":     new(IntSchema),
+	"long":    new(LongSchema),
+	"null":    new(NullSchema),
+	"string":  new(StringSchema),
+}
+
 // ParseSchemaWithRegistry parses a given schema using the provided registry for type lookup.
 // Registry will be filled up during parsing.
 // May return an error if schema is not parsable or has insufficient information about any type.
 func ParseSchemaWithRegistry(rawSchema string, schemas map[string]Schema) (Schema, error) {
+	// check if the provided schema is a primitive schema type
+	if schema, ok := primitiveSchemas[rawSchema]; ok {
+		return schema, nil
+	}
 	var schema interface{}
 	if err := json.Unmarshal([]byte(rawSchema), &schema); err != nil {
-		schema = rawSchema
+		if syntaxErr, ok := err.(*json.SyntaxError); ok {
+			line, col, highlight := highlightPosition(rawSchema, syntaxErr.Offset, 3)
+			return nil, fmt.Errorf("Error at line %d, char %d (offset %d):\n%s\n%v", line, col, syntaxErr.Offset, highlight, err)
+		}
+		return nil, err
 	}
 
 	return schemaByType(schema, schemas, "")
@@ -1180,4 +1200,27 @@ func dereference(v reflect.Value) reflect.Value {
 	}
 
 	return v
+}
+
+func highlightPosition(s string, pos int64, scrollback int) (line, col int, highlight string) {
+	lines := make([]string, 0)
+	currentLine := new(bytes.Buffer)
+	for i := 0; i < int(pos); i++ {
+		c := s[i]
+		if c == '\n' {
+			lines = append(lines, currentLine.String())
+			currentLine.Reset()
+			col = 1
+			continue
+		}
+		col++
+		currentLine.WriteByte(c)
+	}
+	lines = append(lines, currentLine.String())
+	line = len(lines)
+	for i := len(lines) - scrollback; i < len(lines); i++ {
+		highlight += fmt.Sprintf("%5d: %s\n", i, lines[i])
+	}
+	highlight += fmt.Sprintf("%s^\n", strings.Repeat(" ", col+5))
+	return
 }
