@@ -1,6 +1,7 @@
 package avro
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -926,7 +927,11 @@ func ParseSchema(rawSchema string) (Schema, error) {
 func ParseSchemaWithRegistry(rawSchema string, schemas map[string]Schema) (Schema, error) {
 	var schema interface{}
 	if err := json.Unmarshal([]byte(rawSchema), &schema); err != nil {
-		schema = rawSchema
+		if syntaxErr, ok := err.(*json.SyntaxError); ok {
+			line, col, highlight := highlightPosition(rawSchema, syntaxErr.Offset, 3)
+			return nil, fmt.Errorf("Error at line %d, char %d (offset %d):\n%s\n%v", line, col, syntaxErr.Offset, highlight, err)
+		}
+		return nil, err
 	}
 
 	return schemaByType(schema, schemas, "")
@@ -1180,4 +1185,27 @@ func dereference(v reflect.Value) reflect.Value {
 	}
 
 	return v
+}
+
+func highlightPosition(s string, pos int64, scrollback int) (line, col int, highlight string) {
+	lines := make([]string, 0)
+	currentLine := new(bytes.Buffer)
+	for i := 0; i < int(pos); i++ {
+		c := s[i]
+		if c == '\n' {
+			lines = append(lines, currentLine.String())
+			currentLine.Reset()
+			col = 1
+			continue
+		}
+		col++
+		currentLine.WriteByte(c)
+	}
+	lines = append(lines, currentLine.String())
+	line = len(lines)
+	for i := len(lines) - scrollback; i < len(lines); i++ {
+		highlight += fmt.Sprintf("%5d: %s\n", i, lines[i])
+	}
+	highlight += fmt.Sprintf("%s^\n", strings.Repeat(" ", col+5))
+	return
 }
