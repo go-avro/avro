@@ -39,6 +39,12 @@ var ErrBlockNotFinished = errors.New("Block read is unfinished")
 // Happens when avro schema contains invalid value for fixed size.
 var ErrInvalidFixedSize = errors.New("Invalid Fixed type size")
 
+// Happens when logicalType = decimal, but no precision specified
+var ErrPrecisionRequired = errors.New("precision is required in decimal logicalType")
+
+// Happens when avro schema contains invalid value for map value type or array item type.
+var ErrInvalidValueType = errors.New("Invalid array or map value type")
+
 //// Happens when avro schema contains a union within union.
 //var ErrNestedUnionsNotAllowed = errors.New("Nested unions are not allowed")
 

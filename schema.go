@@ -78,6 +78,15 @@ const (
 	typeDouble  = "double"
 	typeBoolean = "boolean"
 	typeNull    = "null"
+
+	// logical types
+	logicalTypeDate            = "date"
+	logicalTypeDecimal         = "decimal"
+	logicalTypeDuration        = "duration"
+	logicalTypeTimeOfDayMillis = "time-millis"
+	logicalTypeTimeOfDayMicros = "time-micros"
+	logicalTypeTimeMillis      = "timestamp-millis"
+	logicalTypeTimeMicros      = "timestamp-micros"
 )
 
 const (
@@ -92,6 +101,11 @@ const (
 	schemaSymbolsField   = "symbols"
 	schemaTypeField      = "type"
 	schemaValuesField    = "values"
+
+	// logical types - see https://avro.apache.org/docs/1.8.2/spec.html#Logical+Types
+	schemaLogicalTypeField = "logicalType"
+	schemaScaleField       = "scale"
+	schemaPrecisionField   = "precision"
 )
 
 // Schema is an interface representing a single Avro schema (both primitive and complex).
@@ -147,11 +161,19 @@ func (*StringSchema) MarshalJSON() ([]byte, error) {
 }
 
 // BytesSchema implements Schema and represents Avro bytes type.
-type BytesSchema struct{}
+type BytesSchema struct {
+	LogicalType string `json:"logicalType,omitempty"`
+	Scale       int    `json:"scale,omitempty"`
+	Precision   int    `json:"precision,omitempty"`
+}
 
 // String returns a JSON representation of BytesSchema.
-func (*BytesSchema) String() string {
-	return `{"type": "bytes"}`
+func (bs *BytesSchema) String() string {
+	if bs.LogicalType == "" {
+		return `{"type": "bytes"}`
+	}
+	jb, _ := bs.MarshalJSON()
+	return string(jb)
 }
 
 // Type returns a type constant for this BytesSchema.
@@ -177,8 +199,22 @@ func (*BytesSchema) Validate(v reflect.Value) bool {
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*BytesSchema) MarshalJSON() ([]byte, error) {
-	return []byte(`"bytes"`), nil
+func (bs *BytesSchema) MarshalJSON() ([]byte, error) {
+	if bs.LogicalType == "" {
+		return []byte(`"bytes"`), nil
+	}
+	// the only logical type on bytes is decimal
+	return json.Marshal(struct {
+		Type        string `json:"type"`
+		LogicalType string `json:"logicalType"`
+		Scale       int    `json:"scale"`
+		Precision   int    `json:"precision"`
+	}{
+		Type:        "long",
+		LogicalType: bs.LogicalType,
+		Scale:       bs.Scale,
+		Precision:   bs.Precision,
+	})
 }
 
 // IntSchema implements Schema and represents Avro int type.
@@ -215,11 +251,17 @@ func (*IntSchema) MarshalJSON() ([]byte, error) {
 }
 
 // LongSchema implements Schema and represents Avro long type.
-type LongSchema struct{}
+type LongSchema struct {
+	LogicalType string
+}
 
 // Returns a JSON representation of LongSchema.
-func (*LongSchema) String() string {
-	return `{"type": "long"}`
+func (ls *LongSchema) String() string {
+	if ls.LogicalType == "" {
+		return `{"type": "long"}`
+	}
+	jb, _ := ls.MarshalJSON()
+	return string(jb)
 }
 
 // Type returns a type constant for this LongSchema.
@@ -243,8 +285,17 @@ func (*LongSchema) Validate(v reflect.Value) bool {
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*LongSchema) MarshalJSON() ([]byte, error) {
-	return []byte(`"long"`), nil
+func (ls *LongSchema) MarshalJSON() ([]byte, error) {
+	if ls.LogicalType == "" {
+		return []byte(`"long"`), nil
+	}
+	return json.Marshal(struct {
+		Type        string `json:"type"`
+		LogicalType string `json:"logicalType,omitempty"`
+	}{
+		Type:        "long",
+		LogicalType: ls.LogicalType,
+	})
 }
 
 // FloatSchema implements Schema and represents Avro float type.
@@ -832,10 +883,13 @@ func (s *UnionSchema) MarshalJSON() ([]byte, error) {
 
 // FixedSchema implements Schema and represents Avro fixed type.
 type FixedSchema struct {
-	Namespace  string
-	Name       string
-	Size       int
-	Properties map[string]interface{}
+	Namespace   string
+	Name        string
+	Size        int
+	LogicalType string
+	Scale       int
+	Precision   int
+	Properties  map[string]interface{}
 }
 
 // String returns a JSON representation of FixedSchema.
@@ -878,13 +932,19 @@ func (s *FixedSchema) Validate(v reflect.Value) bool {
 // MarshalJSON serializes the given schema as JSON.
 func (s *FixedSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		Type string `json:"type,omitempty"`
-		Size int    `json:"size,omitempty"`
-		Name string `json:"name,omitempty"`
+		Type        string `json:"type,omitempty"`
+		Size        int    `json:"size,omitempty"`
+		Name        string `json:"name,omitempty"`
+		LogicalType string `json:"logicalType,omitempty"`
+		Scale       int    `json:"scale,omitempty"`
+		Precision   int    `json:"precision,omitempty"`
 	}{
-		Type: "fixed",
-		Size: s.Size,
-		Name: s.Name,
+		Type:        "fixed",
+		Size:        s.Size,
+		Name:        s.Name,
+		LogicalType: s.LogicalType,
+		Scale:       s.Scale,
+		Precision:   s.Precision,
 	})
 }
 
@@ -989,13 +1049,16 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 		case typeInt:
 			return new(IntSchema), nil
 		case typeLong:
+			if logicalType, ok := v[schemaLogicalTypeField].(string); ok {
+				return &LongSchema{LogicalType: logicalType}, nil
+			}
 			return new(LongSchema), nil
 		case typeFloat:
 			return new(FloatSchema), nil
 		case typeDouble:
 			return new(DoubleSchema), nil
 		case typeBytes:
-			return new(BytesSchema), nil
+			return parseBytesSchema(v, registry, namespace)
 		case typeString:
 			return new(StringSchema), nil
 		case typeArray:
@@ -1047,10 +1110,52 @@ func parseFixedSchema(v map[string]interface{}, registry map[string]Schema, name
 	if !ok {
 		return nil, ErrInvalidFixedSize
 	}
-
-	schema := &FixedSchema{Name: v[schemaNameField].(string), Size: int(size), Properties: getProperties(v)}
+	logicalType, scale, precision, err := parseLogicalType(v)
+	if err != nil {
+		return nil, err
+	}
+	schema := &FixedSchema{
+		Name:        v[schemaNameField].(string),
+		Size:        int(size),
+		LogicalType: logicalType,
+		Scale:       scale,
+		Precision:   precision,
+		Properties:  getProperties(v),
+	}
 	setOptionalField(&schema.Namespace, v, schemaNamespaceField)
 	return addSchema(getFullName(v[schemaNameField].(string), namespace), schema, registry), nil
+}
+
+func parseBytesSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
+	logicalType, scale, precision, err := parseLogicalType(v)
+	if err != nil {
+		return nil, err
+	}
+	schema := &BytesSchema{
+		LogicalType: logicalType,
+		Scale:       scale,
+		Precision:   precision,
+	}
+	return schema, nil
+}
+
+func parseLogicalType(v map[string]interface{}) (logicalType string, scale, precision int, err error) {
+	logicalType, _ = v[schemaLogicalTypeField].(string)
+	if logicalType == logicalTypeDecimal {
+		var ok bool
+		var tmpFloat float64
+		if tmpFloat, ok = v[schemaScaleField].(float64); ok {
+			scale = int(tmpFloat)
+		} else {
+			scale, _ = v[schemaScaleField].(int)
+		}
+		if tmpFloat, ok = v[schemaPrecisionField].(float64); ok {
+			precision = int(tmpFloat)
+		} else if precision, ok = v[schemaPrecisionField].(int); !ok {
+			return "", -1, -1, ErrPrecisionRequired
+		}
+	}
+	return
 }
 
 func parseUnionSchema(v []interface{}, registry map[string]Schema, namespace string) (Schema, error) {
@@ -1167,6 +1272,7 @@ func getProperties(v map[string]interface{}) map[string]interface{} {
 func isReserved(name string) bool {
 	switch name {
 	case schemaAliasesField, schemaDocField, schemaFieldsField, schemaItemsField, schemaNameField,
+		schemaLogicalTypeField, schemaPrecisionField, schemaScaleField,
 		schemaNamespaceField, schemaSizeField, schemaSymbolsField, schemaTypeField, schemaValuesField:
 		return true
 	}
