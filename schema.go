@@ -611,6 +611,7 @@ type SchemaField struct {
 	Name       string      `json:"name,omitempty"`
 	Doc        string      `json:"doc,omitempty"`
 	Default    interface{} `json:"default"`
+	Aliases    []string    `json:"aliases,omitempty"`
 	Type       Schema      `json:"type,omitempty"`
 	Properties map[string]interface{}
 }
@@ -1187,6 +1188,7 @@ func parseRecordSchema(v map[string]interface{}, registry map[string]Schema, nam
 	setOptionalField(&schema.Namespace, v, schemaNamespaceField)
 	setOptionalField(&namespace, v, schemaNamespaceField)
 	setOptionalField(&schema.Doc, v, schemaDocField)
+	setOptionalStringListField(&schema.Aliases, v, schemaAliasesField)
 	addSchema(getFullName(v[schemaNameField].(string), namespace), newRecursiveSchema(schema), registry)
 	fields := make([]*SchemaField, len(v[schemaFieldsField].([]interface{})))
 	for i := range fields {
@@ -1212,6 +1214,10 @@ func parseSchemaField(i interface{}, registry map[string]Schema, namespace strin
 		schemaField := &SchemaField{Name: name, Properties: getProperties(v)}
 		setOptionalField(&schemaField.Doc, v, schemaDocField)
 		fieldType, err := schemaByType(v[schemaTypeField], registry, namespace)
+		if err != nil {
+			return nil, err
+		}
+		err = setOptionalStringListField(&schemaField.Aliases, v, schemaAliasesField)
 		if err != nil {
 			return nil, err
 		}
@@ -1248,6 +1254,24 @@ func setOptionalField(where *string, v map[string]interface{}, fieldName string)
 	if field, exists := v[fieldName]; exists {
 		*where = field.(string)
 	}
+}
+
+func setOptionalStringListField(where *[]string, v map[string]interface{}, fieldName string) error {
+	if field, exists := v[fieldName]; exists {
+		if boxedList, ok := field.([]interface{}); ok {
+			var stringList = make([]string, len(boxedList))
+			for i := range boxedList {
+				if stringList[i], ok = boxedList[i].(string); !ok {
+					return fmt.Errorf("Bad '%s' entry %#v", fieldName, boxedList[i])
+				}
+			}
+			field = stringList
+		}
+		if stringList, ok := field.([]string); ok {
+			*where = stringList
+		}
+	}
+	return nil
 }
 
 func addSchema(name string, schema Schema, schemas map[string]Schema) Schema {
