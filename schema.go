@@ -203,18 +203,30 @@ func (bs *BytesSchema) MarshalJSON() ([]byte, error) {
 	if bs.LogicalType == "" {
 		return []byte(`"bytes"`), nil
 	}
-	// the only logical type on bytes is decimal
-	return json.Marshal(struct {
-		Type        string `json:"type"`
-		LogicalType string `json:"logicalType"`
-		Scale       int    `json:"scale"`
-		Precision   int    `json:"precision"`
-	}{
-		Type:        "long",
-		LogicalType: bs.LogicalType,
-		Scale:       bs.Scale,
-		Precision:   bs.Precision,
-	})
+	if bs.LogicalType == logicalTypeDecimal {
+		// the only logical type on bytes is decimal
+		return json.Marshal(struct {
+			Type        string `json:"type"`
+			LogicalType string `json:"logicalType"`
+			Scale       int    `json:"scale"`
+			Precision   int    `json:"precision"`
+		}{
+			Type:        "bytes",
+			LogicalType: bs.LogicalType,
+			Scale:       bs.Scale,
+			Precision:   bs.Precision,
+		})
+	} else {
+		// otherwise who knows?
+		// the only logical type on bytes is decimal
+		return json.Marshal(struct {
+			Type        string `json:"type"`
+			LogicalType string `json:"logicalType"`
+		}{
+			Type:        "bytes",
+			LogicalType: bs.LogicalType,
+		})
+	}
 }
 
 // IntSchema implements Schema and represents Avro int type.
