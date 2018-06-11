@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"math/rand"
 	"testing"
+	"time"
 )
 
 const primitiveSchemaRaw = `{"type":"record","name":"Primitive","namespace":"example.avro","fields":[{"name":"booleanField","type":"boolean"},{"name":"intField","type":"int"},{"name":"longField","type":"long"},{"name":"floatField","type":"float"},{"name":"doubleField","type":"double"},{"name":"bytesField","type":"bytes"},{"name":"stringField","type":"string"},{"name":"nullField","type":"null"}]}`
@@ -229,6 +230,59 @@ func TestSpecificDatumTags(t *testing.T) {
 	assert(t, out.Null, in.Null)
 	assert(t, out.Array, in.Array)
 	assert(t, out.Map, in.Map)
+}
+
+func TestSpecificDatumWriterLogicalTypes(t *testing.T) {
+	type Logical struct {
+		TimeMillis      time.Time `avro:"timeMillis"`
+		TimeMicros      time.Time `avro:"timeMicros"`
+		TimeOfDayMicros time.Time `avro:"timeOfDayMicros"`
+	}
+
+	sch, err := ParseSchema(`{
+		"type":"record",
+		"name":"Logical",
+		"namespace":"example.avro",
+		"fields": [
+			{"name":"timeMillis","type":{"type":"long","logicalType":"timestamp-millis"}},
+			{"name":"timeMicros","type":{"type":"long","logicalType":"timestamp-micros"}},
+			{"name":"timeOfDayMicros","type":{"type":"long","logicalType":"time-micros"}}
+		]}`)
+	assert(t, err, nil)
+
+	buffer := &bytes.Buffer{}
+	enc := NewBinaryEncoder(buffer)
+
+	w := NewSpecificDatumWriter()
+	w.SetSchema(sch)
+
+	in := &Logical{
+		TimeMillis:      time.Unix(123456, int64(789*time.Millisecond)),
+		TimeMicros:      time.Unix(1234567890, int64(123456*time.Microsecond)),
+		TimeOfDayMicros: time.Unix(1234509876, int64(543210*time.Microsecond)),
+	}
+
+	err = w.Write(in, enc)
+	assert(t, err, nil)
+	dec := NewBinaryDecoder(buffer.Bytes())
+	r := NewSpecificDatumReader()
+	r.SetSchema(sch)
+
+	out := &Logical{}
+	err = r.Read(out, dec)
+	assert(t, err, nil)
+
+	assert(t, out.TimeMillis.UnixNano(), in.TimeMillis.UnixNano())
+	assert(t, out.TimeMicros.UnixNano(), in.TimeMicros.UnixNano())
+	type TimeOfDay struct {
+		H, M, S, Nano int
+	}
+	var inTimeOfDay, outTimeOfDay TimeOfDay
+	inTimeOfDay.H, inTimeOfDay.M, inTimeOfDay.S = in.TimeOfDayMicros.Clock()
+	inTimeOfDay.Nano = in.TimeOfDayMicros.Nanosecond()
+	outTimeOfDay.H, outTimeOfDay.M, outTimeOfDay.S = out.TimeOfDayMicros.Clock()
+	outTimeOfDay.Nano = out.TimeOfDayMicros.Nanosecond()
+	assert(t, outTimeOfDay, inTimeOfDay)
 }
 
 func TestGenericDatumWriterEmptyMap(t *testing.T) {
