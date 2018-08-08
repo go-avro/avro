@@ -259,7 +259,7 @@ func TestSpecificDatumWriterLogicalTypes(t *testing.T) {
 	in := &Logical{
 		TimeMillis:      time.Unix(123456, int64(789*time.Millisecond)),
 		TimeMicros:      time.Unix(1234567890, int64(123456*time.Microsecond)),
-		TimeOfDayMicros: time.Unix(1234509876, int64(543210*time.Microsecond)),
+		TimeOfDayMicros: time.Unix(1234509876, int64(543210*time.Microsecond)).UTC(),
 	}
 
 	err = w.Write(in, enc)
