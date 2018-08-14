@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // ***********************
@@ -292,8 +293,53 @@ func (*LongSchema) Prop(key string) (interface{}, bool) {
 }
 
 // Validate checks whether the given value is writeable to this schema.
-func (*LongSchema) Validate(v reflect.Value) bool {
-	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int64
+func (ls *LongSchema) Validate(v reflect.Value) bool {
+	switch ls.LogicalType {
+	case logicalTypeTimeOfDayMicros:
+		if _, ok := dereference(v).Interface().(time.Time); ok {
+			return ok
+		}
+		if _, ok := dereference(v).Interface().(time.Duration); ok {
+			return ok
+		}
+		return false
+	case logicalTypeTimeMillis, logicalTypeTimeMicros:
+		if _, ok := dereference(v).Interface().(time.Time); ok {
+			return ok
+		}
+		return false
+	default:
+		return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int64
+	}
+}
+
+// GetInt64 gets the signed 64-bit value from the given value.
+func (ls *LongSchema) GetInt64(v reflect.Value) int64 {
+	switch ls.LogicalType {
+	case logicalTypeTimeOfDayMicros:
+		if timeVal, ok := dereference(v).Interface().(time.Time); ok {
+			h, m, s := timeVal.Clock()
+			duration := time.Duration(h)*time.Hour + time.Duration(s)*time.Second
+			duration += time.Duration(m)*time.Minute + time.Duration(timeVal.Nanosecond())
+			return int64(duration / time.Microsecond)
+		}
+		if durationVal, ok := dereference(v).Interface().(time.Duration); ok {
+			return int64(durationVal / time.Microsecond)
+		}
+	case logicalTypeTimeMillis:
+		if timeVal, ok := dereference(v).Interface().(time.Time); ok {
+			millis := int64(time.Duration(timeVal.Nanosecond()) / time.Millisecond)
+			millis += timeVal.Unix() * 1000
+			return millis
+		}
+	case logicalTypeTimeMicros:
+		if timeVal, ok := dereference(v).Interface().(time.Time); ok {
+			micros := int64(time.Duration(timeVal.Nanosecond()) / time.Microsecond)
+			micros += timeVal.Unix() * 1e6
+			return micros
+		}
+	}
+	return dereference(v).Interface().(int64)
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.

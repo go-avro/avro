@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 )
 
 // ***********************
@@ -185,6 +186,11 @@ func (reader sDatumReader) readValue(field Schema, reflectField reflect.Value, d
 	case Int:
 		return reader.mapPrimitive(func() (interface{}, error) { return dec.ReadInt() })
 	case Long:
+		longSchema := field.(*LongSchema)
+		if longSchema.LogicalType != "" && reflectField.Kind() != reflect.Int64 {
+			return reader.mapLogical(field, reflectField.Type(),
+				func() (interface{}, error) { return dec.ReadLong() })
+		}
 		return reader.mapPrimitive(func() (interface{}, error) { return dec.ReadLong() })
 	case Float:
 		return reader.mapPrimitive(func() (interface{}, error) { return dec.ReadFloat() })
@@ -227,6 +233,37 @@ func (reader sDatumReader) mapPrimitive(readerFunc func() (interface{}, error)) 
 	}
 
 	return reflect.ValueOf(value), nil
+}
+
+func (reader sDatumReader) mapLogical(field Schema, reflectType reflect.Type, readerFunc func() (interface{}, error)) (reflect.Value, error) {
+	value, err := readerFunc()
+	if err != nil {
+		return reflect.Value{}, err
+	}
+	switch field := field.(type) {
+	case *LongSchema:
+		value := value.(int64)
+		var timeVal time.Time
+		switch field.LogicalType {
+		default:
+			return reflect.Value{}, fmt.Errorf("don't know how to decode long logical type %s", field.LogicalType)
+		case logicalTypeTimeMillis:
+			timeVal = time.Unix(value/1e3, value%1e3*1e6)
+		case logicalTypeTimeMicros:
+			timeVal = time.Unix(value/1e6, value%1e6*1e3)
+		case logicalTypeTimeOfDayMillis:
+			// convert to UTC on the way IN only for time of day values
+			timeVal = time.Unix(value/1e3, value%1e3*1e6).UTC()
+		case logicalTypeTimeOfDayMicros:
+			timeVal = time.Unix(value/1e6, value%1e6*1e3).UTC()
+		}
+		// in theory, more detailed automatic casting could happen
+		// based on reflectType - for now just return the time and let
+		// it blow up if the field cannot hold a time.Time value.
+		return reflect.ValueOf(timeVal), nil
+	default:
+		return reflect.Value{}, fmt.Errorf("can't decode logical type in %T schema (%s)", field, field.GetName())
+	}
 }
 
 func (reader sDatumReader) mapArray(field Schema, reflectField reflect.Value, dec Decoder) (reflect.Value, error) {
