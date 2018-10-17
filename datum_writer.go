@@ -145,7 +145,7 @@ func (writer *SpecificDatumWriter) writeBoolean(v reflect.Value, enc Encoder, s 
 		return fmt.Errorf("Invalid boolean value: %v", v.Interface())
 	}
 
-	enc.WriteBoolean(v.Interface().(bool))
+	enc.WriteBoolean(dereference(v).Interface().(bool))
 	return nil
 }
 
@@ -154,7 +154,7 @@ func (writer *SpecificDatumWriter) writeInt(v reflect.Value, enc Encoder, s Sche
 		return fmt.Errorf("Invalid int value: %v", v.Interface())
 	}
 
-	enc.WriteInt(v.Interface().(int32))
+	enc.WriteInt(dereference(v).Interface().(int32))
 	return nil
 }
 
@@ -163,7 +163,7 @@ func (writer *SpecificDatumWriter) writeLong(v reflect.Value, enc Encoder, s Sch
 		return fmt.Errorf("Invalid long value: %v", v.Interface())
 	}
 
-	enc.WriteLong(v.Interface().(int64))
+	enc.WriteLong(dereference(v).Interface().(int64))
 	return nil
 }
 
@@ -172,7 +172,7 @@ func (writer *SpecificDatumWriter) writeFloat(v reflect.Value, enc Encoder, s Sc
 		return fmt.Errorf("Invalid float value: %v", v.Interface())
 	}
 
-	enc.WriteFloat(v.Interface().(float32))
+	enc.WriteFloat(dereference(v).Interface().(float32))
 	return nil
 }
 
@@ -181,7 +181,7 @@ func (writer *SpecificDatumWriter) writeDouble(v reflect.Value, enc Encoder, s S
 		return fmt.Errorf("Invalid double value: %v", v.Interface())
 	}
 
-	enc.WriteDouble(v.Interface().(float64))
+	enc.WriteDouble(dereference(v).Interface().(float64))
 	return nil
 }
 
@@ -190,7 +190,7 @@ func (writer *SpecificDatumWriter) writeBytes(v reflect.Value, enc Encoder, s Sc
 		return fmt.Errorf("Invalid bytes value: %v", v.Interface())
 	}
 
-	enc.WriteBytes(v.Interface().([]byte))
+	enc.WriteBytes(dereference(v).Interface().([]byte))
 	return nil
 }
 
@@ -199,7 +199,7 @@ func (writer *SpecificDatumWriter) writeString(v reflect.Value, enc Encoder, s S
 		return fmt.Errorf("Invalid string value: %v", v.Interface())
 	}
 
-	enc.WriteString(v.Interface().(string))
+	enc.WriteString(dereference(v).Interface().(string))
 	return nil
 }
 
@@ -280,7 +280,7 @@ func (writer *SpecificDatumWriter) writeFixed(v reflect.Value, enc Encoder, s Sc
 	}
 
 	// Write the raw bytes. The length is known by the schema
-	enc.WriteRaw(v.Interface().([]byte))
+	enc.WriteRaw(dereference(v).Interface().([]byte))
 	return nil
 }
 

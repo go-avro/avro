@@ -360,7 +360,14 @@ func (reader sDatumReader) mapUnion(field Schema, reflectField reflect.Value, de
 	if unionIndex < 0 || int(unionIndex) >= len(types) {
 		return reflect.Value{}, fmt.Errorf("Invalid union index %d", unionIndex)
 	}
-	return reader.readValue(types[unionIndex], reflectField, dec)
+
+	value, err := reader.readValue(types[unionIndex], reflectField, dec)
+	if reflectField.Kind() == reflect.Ptr && value.Kind() != reflect.Ptr && value.IsValid() {
+		ref := reflect.New(reflectField.Type().Elem())
+		ref.Elem().Set(value)
+		value = ref
+	}
+	return value, err
 }
 
 func (reader sDatumReader) mapFixed(field Schema, dec Decoder) (reflect.Value, error) {
