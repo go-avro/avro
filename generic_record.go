@@ -15,7 +15,9 @@ limitations under the License. */
 
 package avro
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // AvroRecord is an interface for anything that has an Avro schema and can be serialized/deserialized by this library.
 type AvroRecord interface {
