@@ -235,14 +235,18 @@ func (reader sDatumReader) mapArray(field Schema, reflectField reflect.Value, de
 		return reflect.ValueOf(arrayLength), err
 	}
 
-	array := reflect.MakeSlice(reflectField.Type(), 0, 0)
+	indirectArrayType := reflectField.Type()
+	if reflectField.Type().Kind() == reflect.Ptr {
+		indirectArrayType = indirectArrayType.Elem()
+	}
+	array := reflect.MakeSlice(indirectArrayType, 0, 0)
 	pointer := reflectField.Type().Elem().Kind() == reflect.Ptr
 	for {
 		if arrayLength == 0 {
 			break
 		}
 
-		arrayPart := reflect.MakeSlice(reflectField.Type(), int(arrayLength), int(arrayLength))
+		arrayPart := reflect.MakeSlice(indirectArrayType, int(arrayLength), int(arrayLength))
 		var i int64
 		for ; i < arrayLength; i++ {
 			current := arrayPart.Index(int(i))
@@ -282,8 +286,12 @@ func (reader sDatumReader) mapMap(field Schema, reflectField reflect.Value, dec 
 		return reflect.ValueOf(mapLength), err
 	}
 	elemType := reflectField.Type().Elem()
-	elemIsPointer := (elemType.Kind() == reflect.Ptr)
-	resultMap := reflect.MakeMap(reflectField.Type())
+	elemIsPointer := elemType.Kind() == reflect.Ptr
+	indirectMapType := reflectField.Type()
+	if reflectField.Type().Kind() == reflect.Ptr {
+		indirectMapType = indirectMapType.Elem()
+	}
+	resultMap := reflect.MakeMap(indirectMapType)
 
 	// dest is an element type value used as the destination for reading values into.
 	// This is required for using non-primitive types as map values, because map values are not addressable
