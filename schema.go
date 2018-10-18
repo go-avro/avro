@@ -137,8 +137,9 @@ func (*StringSchema) Prop(key string) (interface{}, bool) {
 
 // Validate checks whether the given value is writeable to this schema.
 func (*StringSchema) Validate(v reflect.Value) bool {
-	_, ok := dereference(v).Interface().(string)
-	return ok
+	_, isString := dereference(v).Interface().(string)
+	_, isBytes := dereference(v).Interface().([]byte)
+	return isString || isBytes
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.

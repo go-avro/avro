@@ -195,11 +195,15 @@ func (writer *SpecificDatumWriter) writeBytes(v reflect.Value, enc Encoder, s Sc
 }
 
 func (writer *SpecificDatumWriter) writeString(v reflect.Value, enc Encoder, s Schema) error {
-	if !s.Validate(v) {
+	indirect := dereference(v).Interface()
+	switch indirect.(type) {
+	case string:
+		enc.WriteString(indirect.(string))
+	case []byte:
+		enc.WriteString(string(indirect.([]byte))) //promoting bytes to string
+	default:
 		return fmt.Errorf("Invalid string value: %v", v.Interface())
 	}
-
-	enc.WriteString(dereference(v).Interface().(string))
 	return nil
 }
 
