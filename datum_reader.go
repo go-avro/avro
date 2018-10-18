@@ -169,7 +169,14 @@ func (reader *SpecificDatumReader) Read(v interface{}, dec Decoder) error {
 	if reader.schema == nil {
 		return ErrSchemaNotSet
 	}
-	return reader.fillRecord(reader.schema, rv, dec)
+	if reader.writerSchema == nil || reader.schema == reader.writerSchema {
+		return reader.fillRecord(reader.schema, rv, dec)
+	} else {/*TODO if value, err := reader.projectRecord(reader.writerSchema, reader.schema, rv, dec); err != nil {
+		return err
+	} else if value, err = reader.writerSchema.Project(value, reader.schema); err != nil {
+		return err*/
+		panic("TODO")
+	}
 }
 
 // It turns out that SpecificDatumReader as an instance is not needed
@@ -417,7 +424,7 @@ func (reader sDatumReader) mapRecord(field Schema, reflectField reflect.Value, d
 	return record, err
 }
 
-func (this sDatumReader) fillRecord(field Schema, record reflect.Value, dec Decoder) error {
+func (reader sDatumReader) fillRecord(field Schema, record reflect.Value, dec Decoder) error {
 	if pf, ok := field.(*preparedRecordSchema); ok {
 		plan, err := pf.getPlan(record.Type().Elem())
 		if err != nil {
@@ -441,7 +448,7 @@ func (this sDatumReader) fillRecord(field Schema, record reflect.Value, dec Deco
 		recordSchema := field.(*RecordSchema)
 		//ri := record.Interface()
 		for i := 0; i < len(recordSchema.Fields); i++ {
-			if err := this.findAndSet(record, recordSchema.Fields[i], dec); err != nil {
+			if err := reader.findAndSet(record, recordSchema.Fields[i], dec); err != nil {
 				return err
 			}
 		}
@@ -490,17 +497,19 @@ func (reader *GenericDatumReader) Read(v interface{}, dec Decoder) error {
 		return ErrSchemaNotSet
 	}
 
-	//read the value
-	value, err := reader.readValue(reader.schema, dec)
-	if err != nil {
+	var value interface{}
+	var err error
+	if reader.writerSchema == nil || reader.schema == reader.writerSchema {
+		if value, err = reader.readValue(reader.schema, dec); err != nil {
+			return err
+		}
+	} else if value, err = reader.readValue(reader.writerSchema, dec); err != nil {
+		return err
+	} else if value, err = reader.writerSchema.Project(value, reader.schema); err != nil {
 		return err
 	}
 
-	newValue := reflect.ValueOf(value)
-	// dereference the value if needed
-	if newValue.Kind() == reflect.Ptr {
-		newValue = newValue.Elem()
-	}
+	newValue := dereference(reflect.ValueOf(value))
 
 	//set the new value
 	rv.Set(newValue)

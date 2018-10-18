@@ -2,7 +2,6 @@ package avro
 
 import (
 	"bytes"
-	"log"
 	"reflect"
 	"testing"
 )
@@ -156,7 +155,7 @@ func TestUnionAsOption(t *testing.T) {
 
 }
 
-func TestPromotions(t *testing.T) {
+func TestProjections(t *testing.T) {
 	schemaV1 := MustParseSchema(`{ 
 					"name": "Rec", 
 					"type": "record", 
@@ -166,18 +165,21 @@ func TestPromotions(t *testing.T) {
 					] 
 				}`)
 
-
+	//fields are ordered differently
+	//id field is both renamed and promoted to string
+	//list field is added with a default
 	schemaV2 := MustParseSchema(`{
 					"name": "Rec",
 					"type": "record",
 					"fields": [
 						{ "name": "key", "type": "string", "aliases": ["id"] },
-						{ "name": "sum", "type": "long" }
+						{ "name": "sum", "type": "long" },
+						{ "name": "list", "type": { "type": "array", "items": "long" }, "default": [1,2,3] }
 					]
 				}`)
 
 	genRecV1 := NewGenericRecord(schemaV1)
-	genRecV1.Set("sum", int32(1))
+	genRecV1.Set("sum", int32(99))
 	genRecV1.Set("id", []byte("key1"))
 
 	var buf bytes.Buffer
@@ -192,23 +194,31 @@ func TestPromotions(t *testing.T) {
 		panic(err)
 	}
 
-	log.Println(decodedRecord)
+	//log.Println(decodedRecord)
+	if decodedRecord.String() != `{"key":"key1","list":[1,2,3],"sum":99}` {
+		panic("projection failed")
+	}
+	if decodedRecord.Get("key").(string) != "key1" ||
+		decodedRecord.Get("sum").(int64) != 99 {
+		panic("projection failed")
+	}
+	type RecV1 struct {
+		Id  []byte
+		Sum int32
+	}
+	type RecV2 struct {
+		Key  string
+		Sum  int64
+		List []int64 `avro:default,[1,2,3]`
+	}
 
-	//type RecV1 struct {
-	//	Id []byte
-	//	Sum int32
-	//}
-	//type RecV2 struct {
-	//	Key string
-	//	Sum int64
-	//}
-	//
-	//recV1 := &RecV1 { []byte("key1"), 1000 }
-	//var buf2 bytes.Buffer
-	//w2 := NewSpecificDatumWriter().SetSchema(schemaV1)
-	//if err := w2.Write(recV1, NewBinaryEncoder(&buf2)); err != nil {
-	//	panic(err)
-	//}
+	recV1 := &RecV1{[]byte("key1"), 1000}
+	var buf2 bytes.Buffer
+	w2 := NewSpecificDatumWriter().SetSchema(schemaV1)
+	if err := w2.Write(recV1, NewBinaryEncoder(&buf2)); err != nil {
+		panic(err)
+	}
+	//TODO specific record projection
 	//r2 := NewSpecificDatumReader().SetSchema(schemaV1).SetWriterSchema(schemaV2)
 	//recV2 := new(RecV2)
 	//if err := r2.Read(recV2, NewBinaryDecoder(buf2.Bytes())); err != nil {
@@ -220,6 +230,5 @@ func TestPromotions(t *testing.T) {
 	//if !reflect.DeepEqual(recV1, recV2) {
 	//	panic("record compare failed")
 	//}
-
 
 }
