@@ -38,8 +38,6 @@ func testSpecific(record interface{}, schema Schema) {
 		panic(err)
 	}
 
-	log.Println(record)
-	log.Println(decodedRecord)
 	if !reflect.DeepEqual(record, decodedRecord) {
 		panic("record compare failed")
 	}
@@ -155,5 +153,73 @@ func TestUnionAsOption(t *testing.T) {
 		&Nest{Id: 1},
 	}
 	testSpecific(specificRecord, schema)
+
+}
+
+func TestPromotions(t *testing.T) {
+	schemaV1 := MustParseSchema(`{ 
+					"name": "Rec", 
+					"type": "record", 
+					"fields": [ 
+						{ "name": "sum", "type": "int" },
+						{ "name": "id", "type": "bytes" }
+					] 
+				}`)
+
+
+	schemaV2 := MustParseSchema(`{
+					"name": "Rec",
+					"type": "record",
+					"fields": [
+						{ "name": "key", "type": "string", "aliases": ["id"] },
+						{ "name": "sum", "type": "long" }
+					]
+				}`)
+
+	genRecV1 := NewGenericRecord(schemaV1)
+	genRecV1.Set("sum", int32(1))
+	genRecV1.Set("id", []byte("key1"))
+
+	var buf bytes.Buffer
+	w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
+	if err := w.Write(genRecV1, NewBinaryEncoder(&buf)); err != nil {
+		panic(err)
+	}
+
+	r := NewGenericDatumReader().SetSchema(schemaV2).SetWriterSchema(schemaV1)
+	decodedRecord := NewGenericRecord(schemaV2)
+	if err := r.Read(decodedRecord, NewBinaryDecoder(buf.Bytes())); err != nil {
+		panic(err)
+	}
+
+	log.Println(decodedRecord)
+
+	//type RecV1 struct {
+	//	Id []byte
+	//	Sum int32
+	//}
+	//type RecV2 struct {
+	//	Key string
+	//	Sum int64
+	//}
+	//
+	//recV1 := &RecV1 { []byte("key1"), 1000 }
+	//var buf2 bytes.Buffer
+	//w2 := NewSpecificDatumWriter().SetSchema(schemaV1)
+	//if err := w2.Write(recV1, NewBinaryEncoder(&buf2)); err != nil {
+	//	panic(err)
+	//}
+	//r2 := NewSpecificDatumReader().SetSchema(schemaV1).SetWriterSchema(schemaV2)
+	//recV2 := new(RecV2)
+	//if err := r2.Read(recV2, NewBinaryDecoder(buf2.Bytes())); err != nil {
+	//	panic(err)
+	//}
+	//
+	//log.Println(recV1)
+	//log.Println(recV2)
+	//if !reflect.DeepEqual(recV1, recV2) {
+	//	panic("record compare failed")
+	//}
+
 
 }

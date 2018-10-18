@@ -620,7 +620,7 @@ func TestEnumNegativeRegression(t *testing.T) {
 		Type *GenericEnum
 	}
 	var genericDest = NewGenericRecord(schemaEnumA)
-	reader := NewDatumReader(schemaEnumA)
+	reader := NewDatumReader().SetSchema(schemaEnumA)
 
 	///////////
 	// Scenario 1: negative index
