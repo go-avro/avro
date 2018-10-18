@@ -35,6 +35,7 @@ func TestArraySchema(t *testing.T) {
 	if s.(*ArraySchema).Items.Type() != String {
 		t.Errorf("\n%s \n===\n Array item type should be STRING", raw)
 	}
+	stringArrayFingerprint := s.Fingerprint()
 
 	//array of longs
 	raw = `{"type":"array", "items": "long"}`
@@ -45,6 +46,9 @@ func TestArraySchema(t *testing.T) {
 	}
 	if s.(*ArraySchema).Items.Type() != Long {
 		t.Errorf("\n%s \n===\n Array item type should be LONG", raw)
+	}
+	if s.Fingerprint() == stringArrayFingerprint {
+		t.Errorf("\n%x \n===\n %x different schemas should have different fingerprints", stringArrayFingerprint, s.Fingerprint())
 	}
 
 	//array of arrays of strings
@@ -59,6 +63,9 @@ func TestArraySchema(t *testing.T) {
 	}
 	if s.(*ArraySchema).Items.(*ArraySchema).Items.Type() != String {
 		t.Errorf("\n%s \n===\n Array's nested item type should be STRING", raw)
+	}
+	if s.(*ArraySchema).Items.Fingerprint() != stringArrayFingerprint {
+		t.Errorf("\n%x \n!==\n %x matching schemas should have matching fingerprints", s.(*ArraySchema).Items.Fingerprint(), stringArrayFingerprint)
 	}
 
 	raw = `{"type":"array", "items": {"type": "record", "name": "TestRecord", "fields": [
@@ -256,6 +263,12 @@ func TestFixedSchema(t *testing.T) {
 	}
 	if s.(*FixedSchema).Name != "md5" {
 		t.Errorf("\n%s \n===\n Fixed name should be md5. Actual %#v", raw, s.(*FixedSchema).Name)
+	}
+	md5fingerprint := s.Fingerprint()
+	s, err = ParseSchema(`{"type": "fixed", "doc": "md5 is a digest of an input message", "size": 16, "name": "md5"}`)
+	assert(t, err, nil)
+	if s.Fingerprint() != md5fingerprint {
+		t.Errorf("\n%x \n!==\n %x matching schemas should have matching fingerprints", s.Fingerprint(), md5fingerprint)
 	}
 }
 

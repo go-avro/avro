@@ -162,8 +162,7 @@ func (writer *SpecificDatumWriter) writeLong(v reflect.Value, enc Encoder, s Sch
 	if !s.Validate(v) {
 		return fmt.Errorf("Invalid long value: %v", v.Interface())
 	}
-
-	enc.WriteLong(v.Interface().(int64))
+	enc.WriteLong(s.(*LongSchema).GetInt64(v))
 	return nil
 }
 

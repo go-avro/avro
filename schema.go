@@ -1,12 +1,15 @@
 package avro
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"hash/crc64"
 	"io/ioutil"
 	"math"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // ***********************
@@ -78,6 +81,15 @@ const (
 	typeDouble  = "double"
 	typeBoolean = "boolean"
 	typeNull    = "null"
+
+	// logical types
+	logicalTypeDate            = "date"
+	logicalTypeDecimal         = "decimal"
+	logicalTypeDuration        = "duration"
+	logicalTypeTimeOfDayMillis = "time-millis"
+	logicalTypeTimeOfDayMicros = "time-micros"
+	logicalTypeTimeMillis      = "timestamp-millis"
+	logicalTypeTimeMicros      = "timestamp-micros"
 )
 
 const (
@@ -92,10 +104,22 @@ const (
 	schemaSymbolsField   = "symbols"
 	schemaTypeField      = "type"
 	schemaValuesField    = "values"
+
+	// logical types - see https://avro.apache.org/docs/1.8.2/spec.html#Logical+Types
+	schemaLogicalTypeField = "logicalType"
+	schemaScaleField       = "scale"
+	schemaPrecisionField   = "precision"
 )
 
 // Schema is an interface representing a single Avro schema (both primitive and complex).
 type Schema interface {
+	// Canonical returns the encoded schema JSON after
+	// https://avro.apache.org/docs/1.8.2/spec.html#Transforming+into+Parsing+Canonical+Form
+	Canonical() ([]byte, error)
+
+	// Fingerprint returns a CRC64 of the canonical form and is cached in the schema.
+	Fingerprint() uint64
+
 	// Returns an integer constant representing this schema type.
 	Type() int
 
@@ -112,8 +136,47 @@ type Schema interface {
 	Validate(v reflect.Value) bool
 }
 
+type hashable struct {
+	hash      uint64
+	canonical func() []byte
+	valid     bool
+}
+
+// use the polynomial from the avro spec
+var polynomialTable = crc64.MakeTable(0xc15d213aa4d7a795)
+
+// Fingerprint helps types that embed hashable to implement
+func (hashable *hashable) getFingerprint(schema Schema) uint64 {
+	if hashable.valid {
+		return hashable.hash
+	}
+	data, err := schema.Canonical()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get canonical schema for %s: %v", GetFullName(schema), err))
+	}
+	hash64 := crc64.New(polynomialTable)
+	n, err := hash64.Write(data)
+	if n != len(data) {
+		panic(fmt.Sprintf("crc64 refused to accept our data? short read %d < %d", n, len(data)))
+	}
+	if err != nil {
+		panic(fmt.Sprintf("crc64 failed: %v", err))
+	}
+	hashable.hash = hash64.Sum64()
+	hashable.valid = true
+	return hashable.hash
+}
+
 // StringSchema implements Schema and represents Avro string type.
-type StringSchema struct{}
+type StringSchema struct {
+	hashable
+}
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (ss *StringSchema) Canonical() ([]byte, error) { return ss.MarshalJSON() }
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (ss *StringSchema) Fingerprint() uint64 { return ss.getFingerprint(ss) }
 
 // Returns a JSON representation of StringSchema.
 func (*StringSchema) String() string {
@@ -147,11 +210,28 @@ func (*StringSchema) MarshalJSON() ([]byte, error) {
 }
 
 // BytesSchema implements Schema and represents Avro bytes type.
-type BytesSchema struct{}
+type BytesSchema struct {
+	hashable
+	LogicalType string `json:"logicalType,omitempty"`
+	Scale       int    `json:"scale,omitempty"`
+	Precision   int    `json:"precision,omitempty"`
+}
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (bs *BytesSchema) Canonical() ([]byte, error) {
+	return []byte(`"bytes"`), nil
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (bs *BytesSchema) Fingerprint() uint64 { return bs.getFingerprint(bs) }
 
 // String returns a JSON representation of BytesSchema.
-func (*BytesSchema) String() string {
-	return `{"type": "bytes"}`
+func (bs *BytesSchema) String() string {
+	if bs.LogicalType == "" {
+		return `{"type": "bytes"}`
+	}
+	jb, _ := bs.MarshalJSON()
+	return string(jb)
 }
 
 // Type returns a type constant for this BytesSchema.
@@ -177,12 +257,44 @@ func (*BytesSchema) Validate(v reflect.Value) bool {
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*BytesSchema) MarshalJSON() ([]byte, error) {
-	return []byte(`"bytes"`), nil
+func (bs *BytesSchema) MarshalJSON() ([]byte, error) {
+	if bs.LogicalType == "" {
+		return []byte(`"bytes"`), nil
+	}
+	if bs.LogicalType == logicalTypeDecimal {
+		// the only logical type on bytes is decimal
+		return json.Marshal(struct {
+			Type        string `json:"type"`
+			LogicalType string `json:"logicalType"`
+			Scale       int    `json:"scale"`
+			Precision   int    `json:"precision"`
+		}{
+			Type:        "bytes",
+			LogicalType: bs.LogicalType,
+			Scale:       bs.Scale,
+			Precision:   bs.Precision,
+		})
+	} else {
+		// otherwise who knows?
+		// the only logical type on bytes is decimal
+		return json.Marshal(struct {
+			Type        string `json:"type"`
+			LogicalType string `json:"logicalType"`
+		}{
+			Type:        "bytes",
+			LogicalType: bs.LogicalType,
+		})
+	}
 }
 
 // IntSchema implements Schema and represents Avro int type.
-type IntSchema struct{}
+type IntSchema struct{ hashable }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (is IntSchema) Canonical() ([]byte, error) { return is.MarshalJSON() }
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (is *IntSchema) Fingerprint() uint64 { return is.getFingerprint(is) }
 
 // String returns a JSON representation of IntSchema.
 func (*IntSchema) String() string {
@@ -215,11 +327,24 @@ func (*IntSchema) MarshalJSON() ([]byte, error) {
 }
 
 // LongSchema implements Schema and represents Avro long type.
-type LongSchema struct{}
+type LongSchema struct {
+	hashable
+	LogicalType string
+}
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (ls LongSchema) Canonical() ([]byte, error) { return []byte(`"long"`), nil }
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (ls *LongSchema) Fingerprint() uint64 { return ls.getFingerprint(ls) }
 
 // Returns a JSON representation of LongSchema.
-func (*LongSchema) String() string {
-	return `{"type": "long"}`
+func (ls *LongSchema) String() string {
+	if ls.LogicalType == "" {
+		return `{"type": "long"}`
+	}
+	jb, _ := ls.MarshalJSON()
+	return string(jb)
 }
 
 // Type returns a type constant for this LongSchema.
@@ -238,17 +363,77 @@ func (*LongSchema) Prop(key string) (interface{}, bool) {
 }
 
 // Validate checks whether the given value is writeable to this schema.
-func (*LongSchema) Validate(v reflect.Value) bool {
-	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int64
+func (ls *LongSchema) Validate(v reflect.Value) bool {
+	switch ls.LogicalType {
+	case logicalTypeTimeOfDayMicros:
+		if _, ok := dereference(v).Interface().(time.Time); ok {
+			return ok
+		}
+		if _, ok := dereference(v).Interface().(time.Duration); ok {
+			return ok
+		}
+		return false
+	case logicalTypeTimeMillis, logicalTypeTimeMicros:
+		if _, ok := dereference(v).Interface().(time.Time); ok {
+			return ok
+		}
+		return false
+	default:
+		return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int64
+	}
+}
+
+// GetInt64 gets the signed 64-bit value from the given value.
+func (ls *LongSchema) GetInt64(v reflect.Value) int64 {
+	switch ls.LogicalType {
+	case logicalTypeTimeOfDayMicros:
+		if timeVal, ok := dereference(v).Interface().(time.Time); ok {
+			h, m, s := timeVal.Clock()
+			duration := time.Duration(h)*time.Hour + time.Duration(s)*time.Second
+			duration += time.Duration(m)*time.Minute + time.Duration(timeVal.Nanosecond())
+			return int64(duration / time.Microsecond)
+		}
+		if durationVal, ok := dereference(v).Interface().(time.Duration); ok {
+			return int64(durationVal / time.Microsecond)
+		}
+	case logicalTypeTimeMillis:
+		if timeVal, ok := dereference(v).Interface().(time.Time); ok {
+			millis := int64(time.Duration(timeVal.Nanosecond()) / time.Millisecond)
+			millis += timeVal.Unix() * 1000
+			return millis
+		}
+	case logicalTypeTimeMicros:
+		if timeVal, ok := dereference(v).Interface().(time.Time); ok {
+			micros := int64(time.Duration(timeVal.Nanosecond()) / time.Microsecond)
+			micros += timeVal.Unix() * 1e6
+			return micros
+		}
+	}
+	return dereference(v).Interface().(int64)
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
-func (*LongSchema) MarshalJSON() ([]byte, error) {
-	return []byte(`"long"`), nil
+func (ls *LongSchema) MarshalJSON() ([]byte, error) {
+	if ls.LogicalType == "" {
+		return []byte(`"long"`), nil
+	}
+	return json.Marshal(struct {
+		Type        string `json:"type"`
+		LogicalType string `json:"logicalType,omitempty"`
+	}{
+		Type:        "long",
+		LogicalType: ls.LogicalType,
+	})
 }
 
 // FloatSchema implements Schema and represents Avro float type.
-type FloatSchema struct{}
+type FloatSchema struct{ hashable }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (fs FloatSchema) Canonical() ([]byte, error) { return fs.MarshalJSON() }
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (fs *FloatSchema) Fingerprint() uint64 { return fs.getFingerprint(fs) }
 
 // String returns a JSON representation of FloatSchema.
 func (*FloatSchema) String() string {
@@ -281,7 +466,13 @@ func (*FloatSchema) MarshalJSON() ([]byte, error) {
 }
 
 // DoubleSchema implements Schema and represents Avro double type.
-type DoubleSchema struct{}
+type DoubleSchema struct{ hashable }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (ds DoubleSchema) Canonical() ([]byte, error) { return ds.MarshalJSON() }
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (ds *DoubleSchema) Fingerprint() uint64 { return ds.getFingerprint(ds) }
 
 // Returns a JSON representation of DoubleSchema.
 func (*DoubleSchema) String() string {
@@ -314,7 +505,15 @@ func (*DoubleSchema) MarshalJSON() ([]byte, error) {
 }
 
 // BooleanSchema implements Schema and represents Avro boolean type.
-type BooleanSchema struct{}
+type BooleanSchema struct {
+	hashable
+}
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (bs BooleanSchema) Canonical() ([]byte, error) { return bs.MarshalJSON() }
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (bs *BooleanSchema) Fingerprint() uint64 { return bs.getFingerprint(bs) }
 
 // String returns a JSON representation of BooleanSchema.
 func (*BooleanSchema) String() string {
@@ -347,7 +546,13 @@ func (*BooleanSchema) MarshalJSON() ([]byte, error) {
 }
 
 // NullSchema implements Schema and represents Avro null type.
-type NullSchema struct{}
+type NullSchema struct{ hashable }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (ns NullSchema) Canonical() ([]byte, error) { return ns.MarshalJSON() }
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (ns *NullSchema) Fingerprint() uint64 { return ns.getFingerprint(ns) }
 
 // String returns a JSON representation of NullSchema.
 func (*NullSchema) String() string {
@@ -406,6 +611,7 @@ func (*NullSchema) MarshalJSON() ([]byte, error) {
 
 // RecordSchema implements Schema and represents Avro record type.
 type RecordSchema struct {
+	hashable
 	Name       string   `json:"name,omitempty"`
 	Namespace  string   `json:"namespace,omitempty"`
 	Doc        string   `json:"doc,omitempty"`
@@ -413,6 +619,35 @@ type RecordSchema struct {
 	Properties map[string]interface{}
 	Fields     []*SchemaField `json:"fields"`
 }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (rs RecordSchema) Canonical() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteRune('{')
+	// [STRIP] Keep only attributes that are relevant to parsing data, which are: name, fields
+	// [ORDER] Order the appearance of fields of JSON objects as follows: name, fields
+	writeString(&buf, "name", getFullName(rs.Name, rs.Namespace), false) // name is required
+	// fields, also required
+	writeFieldName(&buf, "fields", true)
+	buf.WriteRune('[')
+	for fieldIdx, field := range rs.Fields {
+		if fieldIdx > 0 {
+			buf.WriteRune(',')
+		}
+		fieldCanon, err := field.Canonical()
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field '%s' of %s to canonical: %v",
+				field.Name, getFullName(rs.Name, rs.Namespace), err)
+		}
+		buf.Write(fieldCanon)
+	}
+	buf.WriteRune(']')
+	buf.WriteRune('}')
+	return buf.Bytes(), nil
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (rs *RecordSchema) Fingerprint() uint64 { return rs.getFingerprint(rs) }
 
 // String returns a JSON representation of RecordSchema.
 func (s *RecordSchema) String() string {
@@ -504,6 +739,7 @@ func (s *RecordSchema) Validate(v reflect.Value) bool {
 
 // RecursiveSchema implements Schema and represents Avro record type without a definition (e.g. that should be looked up).
 type RecursiveSchema struct {
+	hashable
 	Actual *RecordSchema
 }
 
@@ -517,6 +753,14 @@ func newRecursiveSchema(parent *RecordSchema) *RecursiveSchema {
 func (s *RecursiveSchema) String() string {
 	return fmt.Sprintf(`{"type": "%s"}`, s.Actual.GetName())
 }
+
+// String returns a JSON representation of RecursiveSchema.
+func (s *RecursiveSchema) Canonical() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (s *RecursiveSchema) Fingerprint() uint64 { return s.getFingerprint(s) }
 
 // Type returns a type constant for this RecursiveSchema.
 func (*RecursiveSchema) Type() int {
@@ -548,8 +792,29 @@ type SchemaField struct {
 	Name       string      `json:"name,omitempty"`
 	Doc        string      `json:"doc,omitempty"`
 	Default    interface{} `json:"default"`
+	Aliases    []string    `json:"aliases,omitempty"`
 	Type       Schema      `json:"type,omitempty"`
 	Properties map[string]interface{}
+}
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (s *SchemaField) Canonical() ([]byte, error) {
+	// [STRIP] Keep only attributes that are relevant to parsing data, which are:
+	// type, name.  Strip all others (e.g., doc and aliases).
+	var buf bytes.Buffer
+	buf.WriteRune('{')
+	// [ORDER] Order the appearance of fields of JSON objects as follows: name, type
+	writeString(&buf, "name", s.Name, false) // name is required
+	// fields, also required
+	writeFieldName(&buf, "type", true)
+	fieldTypeCanonical, err := s.Type.Canonical()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert type '%s' in field '%s' to canonical: %v",
+			GetFullName(s.Type), s.Name, err)
+	}
+	buf.Write(fieldTypeCanonical)
+	buf.WriteRune('}')
+	return buf.Bytes(), nil
 }
 
 // Gets a custom non-reserved property from this schemafield and a bool representing if it exists.
@@ -566,10 +831,10 @@ func (this *SchemaField) Prop(key string) (interface{}, bool) {
 func (s *SchemaField) MarshalJSON() ([]byte, error) {
 	if s.Type.Type() == Null || (s.Type.Type() == Union && s.Type.(*UnionSchema).Types[0].Type() == Null) {
 		return json.Marshal(struct {
-			Name    string      `json:"name,omitempty"`
+			Name    string      `json:"name"`
 			Doc     string      `json:"doc,omitempty"`
 			Default interface{} `json:"default"`
-			Type    Schema      `json:"type,omitempty"`
+			Type    Schema      `json:"type"`
 		}{
 			Name:    s.Name,
 			Doc:     s.Doc,
@@ -579,10 +844,10 @@ func (s *SchemaField) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(struct {
-		Name    string      `json:"name,omitempty"`
+		Name    string      `json:"name"`
 		Doc     string      `json:"doc,omitempty"`
 		Default interface{} `json:"default,omitempty"`
-		Type    Schema      `json:"type,omitempty"`
+		Type    Schema      `json:"type"`
 	}{
 		Name:    s.Name,
 		Doc:     s.Doc,
@@ -598,12 +863,39 @@ func (s *SchemaField) String() string {
 
 // EnumSchema implements Schema and represents Avro enum type.
 type EnumSchema struct {
+	hashable
 	Name       string
 	Namespace  string
 	Aliases    []string
 	Doc        string
 	Symbols    []string
 	Properties map[string]interface{}
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (s *EnumSchema) Fingerprint() uint64 { return s.getFingerprint(s) }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (s *EnumSchema) Canonical() ([]byte, error) {
+	// [STRIP] Keep only attributes that are relevant to parsing data, which are: name, symbols
+	var buf bytes.Buffer
+	buf.WriteRune('{')
+	// [ORDER] Order the appearance of fields of JSON objects as follows: name, symbols
+	writeString(&buf, "name", s.Name, false) // name is required
+	// fields, also required
+	writeFieldName(&buf, "symbols", true)
+	buf.WriteRune('[')
+	for symIdx, sym := range s.Symbols {
+		if symIdx > 0 {
+			buf.WriteRune(',')
+		}
+		buf.WriteRune('"')
+		buf.WriteString(sym)
+		buf.WriteRune('"')
+	}
+	buf.WriteRune(']')
+	buf.WriteRune('}')
+	return buf.Bytes(), nil
 }
 
 // String returns a JSON representation of EnumSchema.
@@ -662,8 +954,30 @@ func (s *EnumSchema) MarshalJSON() ([]byte, error) {
 
 // ArraySchema implements Schema and represents Avro array type.
 type ArraySchema struct {
+	hashable
 	Items      Schema
 	Properties map[string]interface{}
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (s *ArraySchema) Fingerprint() uint64 { return s.getFingerprint(s) }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (s *ArraySchema) Canonical() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteRune('{')
+	// [ORDER] Order the appearance of fields of JSON objects as follows: type, items
+	writeString(&buf, "type", "array", false) // name is required
+	// fields, also required
+	writeFieldName(&buf, "items", true)
+	itemsCanonical, err := s.Items.Canonical()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert array item type '%s' to canonical: %v",
+			GetFullName(s.Items), err)
+	}
+	buf.Write(itemsCanonical)
+	buf.WriteRune('}')
+	return buf.Bytes(), nil
 }
 
 // String returns a JSON representation of ArraySchema.
@@ -718,8 +1032,30 @@ func (s *ArraySchema) MarshalJSON() ([]byte, error) {
 
 // MapSchema implements Schema and represents Avro map type.
 type MapSchema struct {
+	hashable
 	Values     Schema
 	Properties map[string]interface{}
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (s *MapSchema) Fingerprint() uint64 { return s.getFingerprint(s) }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (s *MapSchema) Canonical() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteRune('{')
+	// [ORDER] Order the appearance of fields of JSON objects as follows: type, values
+	writeString(&buf, "type", "map", false) // name is required
+	// values, also required
+	writeFieldName(&buf, "values", true)
+	valuesCanonical, err := s.Values.Canonical()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert map value type '%s' to canonical: %v",
+			GetFullName(s.Values), err)
+	}
+	buf.Write(valuesCanonical)
+	buf.WriteRune('}')
+	return buf.Bytes(), nil
 }
 
 // String returns a JSON representation of MapSchema.
@@ -772,7 +1108,30 @@ func (s *MapSchema) MarshalJSON() ([]byte, error) {
 
 // UnionSchema implements Schema and represents Avro union type.
 type UnionSchema struct {
+	hashable
 	Types []Schema
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (s *UnionSchema) Fingerprint() uint64 { return s.getFingerprint(s) }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (s UnionSchema) Canonical() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteRune('[')
+	for typeIdx, typeSchema := range s.Types {
+		if typeIdx > 0 {
+			buf.WriteRune(',')
+		}
+		typeCanon, err := typeSchema.Canonical()
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert union value at idx #%d (%s) to canonical: %v",
+				typeIdx, GetFullName(typeSchema), err)
+		}
+		buf.Write(typeCanon)
+	}
+	buf.WriteRune(']')
+	return buf.Bytes(), nil
 }
 
 // String returns a JSON representation of UnionSchema.
@@ -832,10 +1191,29 @@ func (s *UnionSchema) MarshalJSON() ([]byte, error) {
 
 // FixedSchema implements Schema and represents Avro fixed type.
 type FixedSchema struct {
-	Namespace  string
-	Name       string
-	Size       int
-	Properties map[string]interface{}
+	hashable
+	Namespace   string
+	Name        string
+	Size        int
+	LogicalType string
+	Scale       int
+	Precision   int
+	Properties  map[string]interface{}
+}
+
+// Fingerprint implement Schema is a way to uniquely identify avro schemas by their content.
+func (s *FixedSchema) Fingerprint() uint64 { return s.getFingerprint(s) }
+
+// Canonical implements Schema and returns the 'Canonical Form' for matching, etc
+func (s FixedSchema) Canonical() ([]byte, error) {
+	var buf bytes.Buffer
+	// [ORDER] Order the appearance of fields of JSON objects as follows: name, type, size.
+	buf.WriteRune('{')
+	writeString(&buf, "name", getFullName(s.Name, s.Namespace), false)
+	writeString(&buf, "type", "fixed", true)
+	writeInt(&buf, "size", s.Size, true)
+	buf.WriteRune('}')
+	return buf.Bytes(), nil
 }
 
 // String returns a JSON representation of FixedSchema.
@@ -878,13 +1256,19 @@ func (s *FixedSchema) Validate(v reflect.Value) bool {
 // MarshalJSON serializes the given schema as JSON.
 func (s *FixedSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		Type string `json:"type,omitempty"`
-		Size int    `json:"size,omitempty"`
-		Name string `json:"name,omitempty"`
+		Type        string `json:"type,omitempty"`
+		Size        int    `json:"size,omitempty"`
+		Name        string `json:"name,omitempty"`
+		LogicalType string `json:"logicalType,omitempty"`
+		Scale       int    `json:"scale,omitempty"`
+		Precision   int    `json:"precision,omitempty"`
 	}{
-		Type: "fixed",
-		Size: s.Size,
-		Name: s.Name,
+		Type:        "fixed",
+		Size:        s.Size,
+		Name:        s.Name,
+		LogicalType: s.LogicalType,
+		Scale:       s.Scale,
+		Precision:   s.Precision,
 	})
 }
 
@@ -989,13 +1373,16 @@ func schemaByType(i interface{}, registry map[string]Schema, namespace string) (
 		case typeInt:
 			return new(IntSchema), nil
 		case typeLong:
+			if logicalType, ok := v[schemaLogicalTypeField].(string); ok {
+				return &LongSchema{LogicalType: logicalType}, nil
+			}
 			return new(LongSchema), nil
 		case typeFloat:
 			return new(FloatSchema), nil
 		case typeDouble:
 			return new(DoubleSchema), nil
 		case typeBytes:
-			return new(BytesSchema), nil
+			return parseBytesSchema(v, registry, namespace)
 		case typeString:
 			return new(StringSchema), nil
 		case typeArray:
@@ -1047,10 +1434,52 @@ func parseFixedSchema(v map[string]interface{}, registry map[string]Schema, name
 	if !ok {
 		return nil, ErrInvalidFixedSize
 	}
-
-	schema := &FixedSchema{Name: v[schemaNameField].(string), Size: int(size), Properties: getProperties(v)}
+	logicalType, scale, precision, err := parseLogicalType(v)
+	if err != nil {
+		return nil, err
+	}
+	schema := &FixedSchema{
+		Name:        v[schemaNameField].(string),
+		Size:        int(size),
+		LogicalType: logicalType,
+		Scale:       scale,
+		Precision:   precision,
+		Properties:  getProperties(v),
+	}
 	setOptionalField(&schema.Namespace, v, schemaNamespaceField)
 	return addSchema(getFullName(v[schemaNameField].(string), namespace), schema, registry), nil
+}
+
+func parseBytesSchema(v map[string]interface{}, registry map[string]Schema, namespace string) (Schema, error) {
+	logicalType, scale, precision, err := parseLogicalType(v)
+	if err != nil {
+		return nil, err
+	}
+	schema := &BytesSchema{
+		LogicalType: logicalType,
+		Scale:       scale,
+		Precision:   precision,
+	}
+	return schema, nil
+}
+
+func parseLogicalType(v map[string]interface{}) (logicalType string, scale, precision int, err error) {
+	logicalType, _ = v[schemaLogicalTypeField].(string)
+	if logicalType == logicalTypeDecimal {
+		var ok bool
+		var tmpFloat float64
+		if tmpFloat, ok = v[schemaScaleField].(float64); ok {
+			scale = int(tmpFloat)
+		} else {
+			scale, _ = v[schemaScaleField].(int)
+		}
+		if tmpFloat, ok = v[schemaPrecisionField].(float64); ok {
+			precision = int(tmpFloat)
+		} else if precision, ok = v[schemaPrecisionField].(int); !ok {
+			return "", -1, -1, ErrPrecisionRequired
+		}
+	}
+	return
 }
 
 func parseUnionSchema(v []interface{}, registry map[string]Schema, namespace string) (Schema, error) {
@@ -1070,6 +1499,7 @@ func parseRecordSchema(v map[string]interface{}, registry map[string]Schema, nam
 	setOptionalField(&schema.Namespace, v, schemaNamespaceField)
 	setOptionalField(&namespace, v, schemaNamespaceField)
 	setOptionalField(&schema.Doc, v, schemaDocField)
+	setOptionalStringListField(&schema.Aliases, v, schemaAliasesField)
 	addSchema(getFullName(v[schemaNameField].(string), namespace), newRecursiveSchema(schema), registry)
 	fields := make([]*SchemaField, len(v[schemaFieldsField].([]interface{})))
 	for i := range fields {
@@ -1095,6 +1525,10 @@ func parseSchemaField(i interface{}, registry map[string]Schema, namespace strin
 		schemaField := &SchemaField{Name: name, Properties: getProperties(v)}
 		setOptionalField(&schemaField.Doc, v, schemaDocField)
 		fieldType, err := schemaByType(v[schemaTypeField], registry, namespace)
+		if err != nil {
+			return nil, err
+		}
+		err = setOptionalStringListField(&schemaField.Aliases, v, schemaAliasesField)
 		if err != nil {
 			return nil, err
 		}
@@ -1133,6 +1567,24 @@ func setOptionalField(where *string, v map[string]interface{}, fieldName string)
 	}
 }
 
+func setOptionalStringListField(where *[]string, v map[string]interface{}, fieldName string) error {
+	if field, exists := v[fieldName]; exists {
+		if boxedList, ok := field.([]interface{}); ok {
+			var stringList = make([]string, len(boxedList))
+			for i := range boxedList {
+				if stringList[i], ok = boxedList[i].(string); !ok {
+					return fmt.Errorf("Bad '%s' entry %#v", fieldName, boxedList[i])
+				}
+			}
+			field = stringList
+		}
+		if stringList, ok := field.([]string); ok {
+			*where = stringList
+		}
+	}
+	return nil
+}
+
 func addSchema(name string, schema Schema, schemas map[string]Schema) Schema {
 	if schemas != nil {
 		if sch, ok := schemas[name]; ok {
@@ -1167,6 +1619,7 @@ func getProperties(v map[string]interface{}) map[string]interface{} {
 func isReserved(name string) bool {
 	switch name {
 	case schemaAliasesField, schemaDocField, schemaFieldsField, schemaItemsField, schemaNameField,
+		schemaLogicalTypeField, schemaPrecisionField, schemaScaleField,
 		schemaNamespaceField, schemaSizeField, schemaSymbolsField, schemaTypeField, schemaValuesField:
 		return true
 	}
