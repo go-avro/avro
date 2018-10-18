@@ -30,3 +30,6 @@ thumbs.db
 *fuzz.zip
 fuzzes/**/crashers
 fuzzes/**/suppressions
+
+# IntelliJ
+*.iml
