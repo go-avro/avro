@@ -2,6 +2,7 @@ package avro
 
 import (
 	"bytes"
+	"log"
 	"reflect"
 	"testing"
 )
@@ -160,7 +161,9 @@ func TestProjections(t *testing.T) {
 					"name": "Rec", 
 					"type": "record", 
 					"fields": [ 
+						{ "name": "deleted", "type": "int" }, 
 						{ "name": "sum", "type": "int" },
+						{ "name": "longToDouble", "type": "long" },
 						{ "name": "id", "type": "bytes" }
 					] 
 				}`)
@@ -174,13 +177,16 @@ func TestProjections(t *testing.T) {
 					"fields": [
 						{ "name": "key", "type": "string", "aliases": ["id"] },
 						{ "name": "sum", "type": "long" },
-						{ "name": "list", "type": { "type": "array", "items": "long" }, "default": [1,2,3] }
+						{ "name": "longToDouble", "type": "double" },
+						{ "name": "added", "type": { "type": "array", "items": "long" }, "default": [1,2,3] }
 					]
 				}`)
 
 	genRecV1 := NewGenericRecord(schemaV1)
+	genRecV1.Set("deleted", int32(5))
 	genRecV1.Set("sum", int32(99))
 	genRecV1.Set("id", []byte("key1"))
+	genRecV1.Set("longToDouble", int64(12345))
 
 	var buf bytes.Buffer
 	w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
@@ -194,25 +200,26 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-	//log.Println(decodedRecord)
-	if decodedRecord.String() != `{"key":"key1","list":[1,2,3],"sum":99}` {
-		panic("projection failed")
-	}
+	log.Println(decodedRecord)
 	if decodedRecord.Get("key").(string) != "key1" ||
-		decodedRecord.Get("sum").(int64) != 99 {
-		panic("projection failed")
+		decodedRecord.Get("sum").(int64) != 99 ||
+		len(decodedRecord.Get("added").([]interface{})) != 3 {
+		panic("generic projection failed")
 	}
 	type RecV1 struct {
-		Id  []byte
-		Sum int32
+		Deleted      int32
+		Id           []byte
+		Sum          int32
+		LongToDouble int64
 	}
 	type RecV2 struct {
-		Key  string
-		Sum  int64
-		List []int64 `avro:default,[1,2,3]`
+		Key          string
+		Sum          int64
+		LongToDouble float64
+		Added        []int64 `avro:default,[1,2,3]`
 	}
 
-	recV1 := &RecV1{[]byte("key1"), 1000}
+	recV1 := &RecV1{500, []byte("key1"), 1000, 12345}
 	var buf2 bytes.Buffer
 	w2 := NewSpecificDatumWriter().SetSchema(schemaV1)
 	if err := w2.Write(recV1, NewBinaryEncoder(&buf2)); err != nil {
@@ -225,11 +232,11 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-
 	if recV2.Key != string(recV1.Id) ||
 		recV2.Sum != int64(recV1.Sum) ||
-		len(recV2.List) != 3 {
-		panic("record compare failed")
+		recV2.LongToDouble != float64(recV1.LongToDouble) ||
+		len(recV2.Added) != 3 {
+		panic("specific projection failed")
 	}
 
 }

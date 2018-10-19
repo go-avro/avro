@@ -60,20 +60,62 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 
 	case Long:
 		switch writerSchema.Type() {
+		case Long:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				return dec.ReadInt()
+			}
 		case Int:
 			result.Unwrap = func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadInt()
 				return int64(v), err
 			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
+	case Float:
+		switch writerSchema.Type() {
+		case Float:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				return dec.ReadFloat()
+			}
+		case Int:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				v, err := dec.ReadInt()
+				return float32(v), err
+			}
 		case Long:
 			result.Unwrap = func(dec Decoder) (interface{}, error) {
-				return dec.ReadInt()
+				v, err := dec.ReadLong()
+				return float32(v), err
 			}
 		default:
 			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
-		//TODO case Float:
-		//TODO case Double:
+
+	case Double:
+		switch writerSchema.Type() {
+		case Double:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				return dec.ReadDouble()
+			}
+		case Int:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				v, err := dec.ReadInt()
+				return float64(v), err
+			}
+		case Long:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				v, err := dec.ReadLong()
+				return float64(v), err
+			}
+		case Float:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				v, err := dec.ReadFloat()
+				return float64(v), err
+			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
 	case Bytes:
 		switch writerSchema.Type() {
 		case Bytes:
@@ -137,6 +179,8 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 					}
 				}
 			}
+			//removed fields
+			projectIndexMap[w] = newProjection(writerField.Type, writerField.Type)
 		}
 		for _, readerField := range readerRecordSchema.Fields {
 			if _, ok := defaultIndexMap[readerField.Name]; !ok {
@@ -145,7 +189,6 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 				var defaultValue reflect.Value
 				switch readerField.Type.Type() {
 				case Array:
-					//reflect.MakeSlice()
 					a := readerField.Default.([]interface{})
 					if len(a) > 0 {
 						switch readerField.Type.(*ArraySchema).Items.Type() {
@@ -186,8 +229,8 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 					}
 					if writerValue , err := projectIndexMap[f].Unwrap(dec); err != nil {
 						return err
-					} else {
-						if writerValue != nil {
+					} else if writerValue != nil {
+						if projectNameMap[f] != "" { //deleted fields don't have a mapped name
 							record.Set(projectNameMap[f], writerValue)
 						}
 					}
@@ -199,12 +242,13 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 				}
 			default:
 				for f := range projectIndexMap {
-					field := writerRecordSchema.Fields[f]
+					//field := writerRecordSchema.Fields[f]
 					structField := target.FieldByName(projectNameMap[f])
 					if !structField.IsValid() {
 						structField = target.FieldByName(strings.Title(projectNameMap[f]))
 						if !structField.IsValid() {
-							return fmt.Errorf("no such field %q in %q", field.Name, target.Type().String())
+							projectIndexMap[f].Unwrap(dec)//still have to read deleted fields from the writer value
+							continue
 						}
 					}
 					if err := projectIndexMap[f].Project(structField, dec); err != nil {
