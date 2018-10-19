@@ -32,7 +32,6 @@ type Projection struct {
 }
 
 func (p *Projection) Read(target reflect.Value, dec Decoder) error {
-	//into = dereference(into)
 	if v, err := p.Unwrap(dec); err != nil {
 		return err
 	} else {
@@ -42,12 +41,66 @@ func (p *Projection) Read(target reflect.Value, dec Decoder) error {
 }
 
 func newProjection(readerSchema, writerSchema Schema) *Projection {
+
+	if writerSchema.Type() == Union {
+		if readerSchema.Type() == Union {
+			writerUnionSchema := writerSchema.(*UnionSchema)
+			variants := make([]*Projection, len(writerUnionSchema.Types))
+			for i, t := range writerUnionSchema.Types {
+				variants[i] = newProjection(t, t)
+			}
+			return unionProjection(readerSchema.(*UnionSchema), writerUnionSchema, variants)
+		} else {
+			for _, t := range writerSchema.(*UnionSchema).Types {
+				if t.Type() == readerSchema.Type() && t.GetName() == readerSchema.GetName() {
+					variants := make([]*Projection, len(writerSchema.(*UnionSchema).Types))
+					for i, t := range writerSchema.(*UnionSchema).Types {
+						if t.Type() == readerSchema.Type() {
+							variants[i] = newProjection(readerSchema, t)
+						}
+					}
+					return unionProjection(readerSchema, writerSchema.(*UnionSchema), variants)
+				}
+			}
+			panic(fmt.Errorf("writer Union does not match reader schema: %v", readerSchema))
+		}
+	} else if readerSchema.Type() == Union {
+		for _, t := range readerSchema.(*UnionSchema).Types {
+			if t.Type() == writerSchema.Type() && t.GetName() == writerSchema.GetName() {
+				return newProjection(t, writerSchema)
+			}
+		}
+	}
+
 	result := &Projection{}
 	result.Project = func(target reflect.Value, dec Decoder) error {
+		if target.Kind() == reflect.Ptr {
+			target.Set(reflect.New(target.Type().Elem()))
+			target = target.Elem()
+		}
 		return result.Read(target, dec)
 	}
+
 	switch readerSchema.Type() {
-	//TODO case Null:
+	case Null:
+		switch writerSchema.Type() {
+		case Null:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				return nil, nil
+			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
+	case Boolean:
+		switch writerSchema.Type() {
+		case Boolean:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				return dec.ReadBoolean()
+			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
+
 	case Int:
 		switch writerSchema.Type() {
 		case Int:
@@ -216,11 +269,37 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 			}
 		}
 
-		//TODO result.Unwrap
+		result.Unwrap = func(dec Decoder) (interface{}, error) {
+			record := NewGenericRecord(readerRecordSchema)
+			for f := range projectIndexMap {
+				field := writerRecordSchema.Fields[f]
+				if projectIndexMap[f].Unwrap == nil {
+					return nil, fmt.Errorf("unwrap not implemented for %q", field.Type)
+				}
+				if writerValue , err := projectIndexMap[f].Unwrap(dec); err != nil {
+					return nil, err
+				} else if writerValue != nil {
+					if projectNameMap[f] != "" { //deleted fields don't have a mapped name
+						record.Set(projectNameMap[f], writerValue)
+					}
+				}
+			}
+			if len(defaultIndexMap) > 0 {
+				for d := range defaultUnwrapperMap {
+					record.Set(d, defaultUnwrapperMap[d])
+				}
+			}
+			return record, nil
+		}
+
 		result.Project = func(target reflect.Value, dec Decoder) error {
+			if target.Kind() == reflect.Ptr && !target.Elem().IsValid() {
+				target.Set(reflect.New(target.Type().Elem()))
+			}
 			target = dereference(target)
 			switch target.Interface().(type) {
 			case GenericRecord:
+
 				record := target.Interface().(GenericRecord)
 				for f := range projectIndexMap {
 					field := writerRecordSchema.Fields[f]
@@ -251,6 +330,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 							continue
 						}
 					}
+
 					if err := projectIndexMap[f].Project(structField, dec); err != nil {
 						return err
 					}
@@ -269,10 +349,38 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 			}
 			return nil
 		}
-		//TODO case Union:
 		//TODO case Recursive:
 	default:
 		panic(fmt.Errorf("not Implemented type: %v", readerSchema))
+	}
+	return result
+}
+
+func unionProjection(reader Schema, writer *UnionSchema, variants []*Projection) *Projection {
+	result := &Projection{}
+	result.Unwrap = func(dec Decoder) (interface{}, error) {
+		unionIndex, err := dec.ReadInt()
+		if err != nil {
+			return reflect.ValueOf(unionIndex), err
+		}
+
+		if unionIndex < 0 || int(unionIndex) >= len(variants) {
+			return reflect.Value{}, fmt.Errorf("invalid union index %d", unionIndex)
+		}
+
+		return variants[unionIndex].Unwrap(dec)
+
+	}
+	result.Project = func(target reflect.Value, dec Decoder) error {
+		unionIndex, err := dec.ReadInt()
+		if err != nil {
+			return err
+		}
+
+		if unionIndex < 0 || int(unionIndex) >= len(variants) {
+			return fmt.Errorf("invalid union index %d", unionIndex)
+		}
+		return variants[unionIndex].Project(target, dec)
 	}
 	return result
 }

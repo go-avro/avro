@@ -164,13 +164,28 @@ func TestProjections(t *testing.T) {
 						{ "name": "deleted", "type": "int" }, 
 						{ "name": "sum", "type": "int" },
 						{ "name": "longToDouble", "type": "long" },
-						{ "name": "id", "type": "bytes" }
+						{ "name": "id", "type": "bytes" },
+						{ "name": "nested", "type": {
+							"name": "Nested", 
+							"type": "record", 
+							"fields": [
+								{ "name": "renamed", "type": "int" }
+							]
+						}},
+						{ "name": "boolOption", "type": [ "null", "boolean" ] },
+						{ "name": "nestedOption", "type": [ 
+							"null", 
+							{
+								"name": "Nested", 
+								"type": "record", 
+								"fields": [
+									{ "name": "renamed", "type": "int" }
+								]
+							}
+						] }
 					] 
 				}`)
 
-	//fields are ordered differently
-	//id field is both renamed and promoted to string
-	//list field is added with a default
 	schemaV2 := MustParseSchema(`{
 					"name": "Rec",
 					"type": "record",
@@ -178,7 +193,25 @@ func TestProjections(t *testing.T) {
 						{ "name": "key", "type": "string", "aliases": ["id"] },
 						{ "name": "sum", "type": "long" },
 						{ "name": "longToDouble", "type": "double" },
-						{ "name": "added", "type": { "type": "array", "items": "long" }, "default": [1,2,3] }
+						{ "name": "added", "type": { "type": "array", "items": "long" }, "default": [1,2,3] },
+						{ "name": "nested", "type": [
+							"null", 
+							{
+								"name": "Nested", 
+								"type": "record", 
+								"fields": [
+									{ "name": "newname", "type": "int", "aliases": ["renamed"] }
+								]
+							}
+						] },
+						{ "name": "boolOption", "type": [ "null", "boolean" ] },
+						{ "name": "nestedOption", "type": { 
+							"name": "Nested", 
+							"type": "record", 
+							"fields": [ 
+								{ "name": "newname", "type": "int", "aliases": ["renamed"] } 
+							] 
+						}}
 					]
 				}`)
 
@@ -187,6 +220,14 @@ func TestProjections(t *testing.T) {
 	genRecV1.Set("sum", int32(99))
 	genRecV1.Set("id", []byte("key1"))
 	genRecV1.Set("longToDouble", int64(12345))
+	genNestedV1 := NewGenericRecord(schemaV1.(*RecordSchema).Fields[4].Type)
+	genNestedV1.Set("renamed", int32(888))
+	genRecV1.Set("nested", genNestedV1)
+	b := true
+	genRecV1.Set("boolOption", &b)
+	gen2NestedV1 := NewGenericRecord(schemaV1.(*RecordSchema).Fields[4].Type)
+	gen2NestedV1.Set("renamed", int32(777))
+	genRecV1.Set("nestedOption", gen2NestedV1)
 
 	var buf bytes.Buffer
 	w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
@@ -203,23 +244,39 @@ func TestProjections(t *testing.T) {
 	log.Println(decodedRecord)
 	if decodedRecord.Get("key").(string) != "key1" ||
 		decodedRecord.Get("sum").(int64) != 99 ||
-		len(decodedRecord.Get("added").([]interface{})) != 3 {
+		len(decodedRecord.Get("added").([]interface{})) != 3 ||
+		decodedRecord.Get("nested").(*GenericRecord).Get("newname").(int32) != 888 ||
+		decodedRecord.Get("nestedOption").(*GenericRecord).Get("newname").(int32) != 777 {
 		panic("generic projection failed")
+	}
+	type NestedV1 struct {
+		Renamed int32
 	}
 	type RecV1 struct {
 		Deleted      int32
 		Id           []byte
 		Sum          int32
 		LongToDouble int64
-	}
-	type RecV2 struct {
-		Key          string
-		Sum          int64
-		LongToDouble float64
-		Added        []int64 `avro:default,[1,2,3]`
+		Nested       NestedV1
+		BoolOption   *bool
+		NestedOption *NestedV1
 	}
 
-	recV1 := &RecV1{500, []byte("key1"), 1000, 12345}
+	type NestedV2 struct {
+		Newname int32 //renamed
+	}
+	type RecV2 struct {
+		//Deleted was removed
+		Key          string                         //renamed and promoted
+		Sum          int64                          //promoted
+		LongToDouble float64                        //promoted
+		Added        []int64 `avro:default,[1,2,3]` // didn't exist
+		Nested       *NestedV2                      //was struct, now union option
+		BoolOption   *bool                          //unchanged
+		NestedOption NestedV2                       //was union option, now struct
+	}
+
+	recV1 := &RecV1{500, []byte("key1"), 1000, 12345, NestedV1{888}, &b, &NestedV1{777}}
 	var buf2 bytes.Buffer
 	w2 := NewSpecificDatumWriter().SetSchema(schemaV1)
 	if err := w2.Write(recV1, NewBinaryEncoder(&buf2)); err != nil {
@@ -232,10 +289,14 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
+	log.Println(recV2)
 	if recV2.Key != string(recV1.Id) ||
 		recV2.Sum != int64(recV1.Sum) ||
 		recV2.LongToDouble != float64(recV1.LongToDouble) ||
-		len(recV2.Added) != 3 {
+		len(recV2.Added) != 3 ||
+		recV2.Nested.Newname != 888 ||
+		*recV2.BoolOption != true ||
+		recV2.NestedOption.Newname != 777 {
 		panic("specific projection failed")
 	}
 

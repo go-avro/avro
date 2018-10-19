@@ -399,7 +399,7 @@ func (reader sDatumReader) mapRecord(field Schema, reflectField reflect.Value, d
 	return record, err
 }
 
-func (this sDatumReader) fillRecord(field Schema, record reflect.Value, dec Decoder) error {
+func (reader sDatumReader) fillRecord(field Schema, record reflect.Value, dec Decoder) error {
 	if pf, ok := field.(*preparedRecordSchema); ok {
 		plan, err := pf.getPlan(record.Type().Elem())
 		if err != nil {
@@ -423,7 +423,7 @@ func (this sDatumReader) fillRecord(field Schema, record reflect.Value, dec Deco
 		recordSchema := field.(*RecordSchema)
 		//ri := record.Interface()
 		for i := 0; i < len(recordSchema.Fields); i++ {
-			if err := this.findAndSet(record, recordSchema.Fields[i], dec); err != nil {
+			if err := reader.findAndSet(record, recordSchema.Fields[i], dec); err != nil {
 				return err
 			}
 		}
