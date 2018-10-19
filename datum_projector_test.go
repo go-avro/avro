@@ -178,30 +178,30 @@ func TestProjections(t *testing.T) {
 					]
 				}`)
 
-	//genRecV1 := NewGenericRecord(schemaV1)
-	//genRecV1.Set("sum", int32(99))
-	//genRecV1.Set("id", []byte("key1"))
-	//
-	//var buf bytes.Buffer
-	//w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
-	//if err := w.Write(genRecV1, NewBinaryEncoder(&buf)); err != nil {
-	//	panic(err)
-	//}
-	//
-	//r := NewGenericDatumReader().SetSchema(schemaV2).SetWriterSchema(schemaV1)
-	//decodedRecord := NewGenericRecord(schemaV2)
-	//if err := r.Read(decodedRecord, NewBinaryDecoder(buf.Bytes())); err != nil {
-	//	panic(err)
-	//}
-	//
-	////log.Println(decodedRecord)
-	//if decodedRecord.String() != `{"key":"key1","list":[1,2,3],"sum":99}` {
-	//	panic("projection failed")
-	//}
-	//if decodedRecord.Get("key").(string) != "key1" ||
-	//	decodedRecord.Get("sum").(int64) != 99 {
-	//	panic("projection failed")
-	//}
+	genRecV1 := NewGenericRecord(schemaV1)
+	genRecV1.Set("sum", int32(99))
+	genRecV1.Set("id", []byte("key1"))
+
+	var buf bytes.Buffer
+	w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
+	if err := w.Write(genRecV1, NewBinaryEncoder(&buf)); err != nil {
+		panic(err)
+	}
+
+	r := NewDatumProjector(schemaV2, schemaV1)
+	decodedRecord := NewGenericRecord(schemaV2)
+	if err := r.Read(decodedRecord, NewBinaryDecoder(buf.Bytes())); err != nil {
+		panic(err)
+	}
+
+	//log.Println(decodedRecord)
+	if decodedRecord.String() != `{"key":"key1","list":[1,2,3],"sum":99}` {
+		panic("projection failed")
+	}
+	if decodedRecord.Get("key").(string) != "key1" ||
+		decodedRecord.Get("sum").(int64) != 99 {
+		panic("projection failed")
+	}
 	type RecV1 struct {
 		Id  []byte
 		Sum int32

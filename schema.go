@@ -549,13 +549,14 @@ type SchemaField struct {
 	Doc        string      `json:"doc,omitempty"`
 	Default    interface{} `json:"default"`
 	Type       Schema      `json:"type,omitempty"`
+	Aliases    []string    `json:"aliases,omitempty"`
 	Properties map[string]interface{}
 }
 
 // Gets a custom non-reserved property from this schemafield and a bool representing if it exists.
-func (this *SchemaField) Prop(key string) (interface{}, bool) {
-	if this.Properties != nil {
-		if prop, ok := this.Properties[key]; ok {
+func (s *SchemaField) Prop(key string) (interface{}, bool) {
+	if s.Properties != nil {
+		if prop, ok := s.Properties[key]; ok {
 			return prop, true
 		}
 	}
@@ -570,11 +571,13 @@ func (s *SchemaField) MarshalJSON() ([]byte, error) {
 			Doc     string      `json:"doc,omitempty"`
 			Default interface{} `json:"default"`
 			Type    Schema      `json:"type,omitempty"`
+			Aliases []string    `json:"aliases,omitempty"`
 		}{
 			Name:    s.Name,
 			Doc:     s.Doc,
 			Default: s.Default,
 			Type:    s.Type,
+			Aliases: s.Aliases,
 		})
 	}
 
@@ -583,11 +586,13 @@ func (s *SchemaField) MarshalJSON() ([]byte, error) {
 		Doc     string      `json:"doc,omitempty"`
 		Default interface{} `json:"default,omitempty"`
 		Type    Schema      `json:"type,omitempty"`
+		Aliases []string    `json:"aliases,omitempty"`
 	}{
 		Name:    s.Name,
 		Doc:     s.Doc,
 		Default: s.Default,
 		Type:    s.Type,
+		Aliases: s.Aliases,
 	})
 }
 
@@ -1094,6 +1099,11 @@ func parseSchemaField(i interface{}, registry map[string]Schema, namespace strin
 		}
 		schemaField := &SchemaField{Name: name, Properties: getProperties(v)}
 		setOptionalField(&schemaField.Doc, v, schemaDocField)
+		if aliases, ok := v[schemaAliasesField]; ok {
+			for _, a := range aliases.([]interface{}) {
+				schemaField.Aliases = append(schemaField.Aliases, a.(string))
+			}
+		}
 		fieldType, err := schemaByType(v[schemaTypeField], registry, namespace)
 		if err != nil {
 			return nil, err
