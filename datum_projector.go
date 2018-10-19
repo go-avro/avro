@@ -21,15 +21,7 @@ func (reader *DatumProjector) Read(into interface{}, dec Decoder) error {
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
 		return errors.New("Not applicable for non-pointer types or nil")
 	}
-
-
-
 	return reader.projection.Project(rv, dec)
-
-}
-
-func (reader *DatumProjector) project(schema Schema, value reflect.Value, decoder Decoder) error {
-
 }
 
 type Projection struct {
@@ -53,13 +45,13 @@ func newProjection(reader, writer Schema) *Projection {
 	case Record:
 		readerRecordSchema := reader.(*RecordSchema)
 		writerRecordSchema := writer.(*RecordSchema)
-	NextReaderField:
 		projectIndexMap := make(map[int]*Projection, len(readerRecordSchema.Fields))
+	NextReaderField:
 		for r, readerField := range readerRecordSchema.Fields {
 			checkField := func(name string) bool {
-				if w, ok := writerRecordSchema.AliasIndex[name]; ok {
-					writerField := writerRecordSchema.Fields[w]
-					projectIndexMap[r] = newProjection(readerField, writerField)
+				if _, ok := writerRecordSchema.AliasIndex[name]; ok {
+					//writerField := writerRecordSchema.Fields[w]
+					projectIndexMap[r] = nil //TODO newProjection(readerField, writerField)
 					return true
 				}
 				return false
@@ -73,9 +65,9 @@ func newProjection(reader, writer Schema) *Projection {
 				}
 			}
 			if readerField.Default == nil {
-				return nil, errors.New("Schema field doesn't have any default value: " + readerField.Name)
+				panic(errors.New("Schema field doesn't have any default value: " + readerField.Name))
 			} else {
-				result.Set(readerField.Name, readerField.Default)
+				projectIndexMap[r] = nil //TODO (readerField.Name, readerField.Default)
 			}
 		}
 	case Union:

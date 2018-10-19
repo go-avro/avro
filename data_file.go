@@ -119,7 +119,7 @@ func newDataFileReader(input io.Reader) (reader *DataFileReader, err error) {
 	if err != nil {
 		return nil, err
 	}
-	reader.datum = NewDatumReader().SetSchema(schema)
+	reader.datum = NewDatumReader(schema)
 
 	codecName := string(reader.header.Meta[codecKey])
 	if codec := codecs[codecName]; codec == nil {
