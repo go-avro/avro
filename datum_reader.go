@@ -25,8 +25,6 @@ type DatumReader interface {
 	// Accepts a value to fill with data and a Decoder to read from. Given value MUST be of pointer type.
 	// May return an error indicating a read failure.
 	Read(v interface{}, dec Decoder) error
-	SetSchema(schema Schema) DatumReader
-	SetWriterSchema(schema Schema) DatumReader
 }
 
 var enumSymbolsToIndexCache = make(map[string]map[string]int32)
@@ -82,10 +80,14 @@ func (enum *GenericEnum) Set(symbol string) {
 // also aribtrary structs.
 //
 // This is the preferred implementation at this point in time.
-func NewDatumReader() DatumReader {
+func NewDatumReader(schema Schema) DatumReader {
+	if schema == nil {
+		panic("NewDatumReader: Must provide a non-nil schema.")
+	}
+
 	return &anyDatumReader{
-		sdr: SpecificDatumReader{},
-		gdr: GenericDatumReader{},
+		sdr: SpecificDatumReader{schema: schema},
+		gdr: GenericDatumReader{schema: schema},
 	}
 }
 
@@ -111,24 +113,11 @@ func (w *anyDatumReader) Read(v interface{}, dec Decoder) error {
 	}
 }
 
-func (w *anyDatumReader) SetSchema(schema Schema) DatumReader {
-	w.sdr.SetSchema(schema)
-	w.gdr.SetSchema(schema)
-	return w
-}
-
-func (w *anyDatumReader) SetWriterSchema(schema Schema) DatumReader {
-	w.sdr.SetWriterSchema(schema)
-	w.gdr.SetWriterSchema(schema)
-	return w
-}
-
 // SpecificDatumReader implements DatumReader and is used for filling Go structs with data.
 // Each value passed to Read is expected to be a pointer.
 type SpecificDatumReader struct {
 	sDatumReader
-	schema       Schema
-	writerSchema Schema
+	schema Schema
 }
 
 // NewSpecificDatumReader creates a new SpecificDatumReader.
@@ -140,13 +129,6 @@ func NewSpecificDatumReader() *SpecificDatumReader {
 // Note that it must be called before calling Read.
 func (reader *SpecificDatumReader) SetSchema(schema Schema) DatumReader {
 	reader.schema = schema
-	return reader
-}
-
-// SetSchema sets the schema for this SpecificDatumReader to know the data structure.
-// Note that it must be called before calling Read.
-func (reader *SpecificDatumReader) SetWriterSchema(schema Schema) DatumReader {
-	reader.writerSchema = schema
 	return reader
 }
 
@@ -169,14 +151,7 @@ func (reader *SpecificDatumReader) Read(v interface{}, dec Decoder) error {
 	if reader.schema == nil {
 		return ErrSchemaNotSet
 	}
-	if reader.writerSchema == nil || reader.schema == reader.writerSchema {
-		return reader.fillRecord(reader.schema, rv, dec)
-	} else {/*TODO if value, err := reader.projectRecord(reader.writerSchema, reader.schema, rv, dec); err != nil {
-		return err
-	} else if value, err = reader.writerSchema.Project(value, reader.schema); err != nil {
-		return err*/
-		panic("TODO")
-	}
+	return reader.fillRecord(reader.schema, rv, dec)
 }
 
 // It turns out that SpecificDatumReader as an instance is not needed
@@ -424,7 +399,7 @@ func (reader sDatumReader) mapRecord(field Schema, reflectField reflect.Value, d
 	return record, err
 }
 
-func (reader sDatumReader) fillRecord(field Schema, record reflect.Value, dec Decoder) error {
+func (this sDatumReader) fillRecord(field Schema, record reflect.Value, dec Decoder) error {
 	if pf, ok := field.(*preparedRecordSchema); ok {
 		plan, err := pf.getPlan(record.Type().Elem())
 		if err != nil {
@@ -448,7 +423,7 @@ func (reader sDatumReader) fillRecord(field Schema, record reflect.Value, dec De
 		recordSchema := field.(*RecordSchema)
 		//ri := record.Interface()
 		for i := 0; i < len(recordSchema.Fields); i++ {
-			if err := reader.findAndSet(record, recordSchema.Fields[i], dec); err != nil {
+			if err := this.findAndSet(record, recordSchema.Fields[i], dec); err != nil {
 				return err
 			}
 		}
@@ -461,8 +436,7 @@ func (reader sDatumReader) fillRecord(field Schema, record reflect.Value, dec De
 // and any values, GenericEnums) with data.
 // Each value passed to Read is expected to be a pointer.
 type GenericDatumReader struct {
-	schema       Schema
-	writerSchema Schema
+	schema Schema
 }
 
 // NewGenericDatumReader creates a new GenericDatumReader.
@@ -474,13 +448,6 @@ func NewGenericDatumReader() *GenericDatumReader {
 // Note that it must be called before calling Read.
 func (reader *GenericDatumReader) SetSchema(schema Schema) DatumReader {
 	reader.schema = schema
-	return reader
-}
-
-// SetSchema sets the schema for this GenericDatumReader to know the data structure.
-// Note that it must be called before calling Read.
-func (reader *GenericDatumReader) SetWriterSchema(schema Schema) DatumReader {
-	reader.writerSchema = schema
 	return reader
 }
 
@@ -497,19 +464,17 @@ func (reader *GenericDatumReader) Read(v interface{}, dec Decoder) error {
 		return ErrSchemaNotSet
 	}
 
-	var value interface{}
-	var err error
-	if reader.writerSchema == nil || reader.schema == reader.writerSchema {
-		if value, err = reader.readValue(reader.schema, dec); err != nil {
-			return err
-		}
-	} else if value, err = reader.readValue(reader.writerSchema, dec); err != nil {
-		return err
-	} else if value, err = reader.writerSchema.Project(value, reader.schema); err != nil {
+	//read the value
+	value, err := reader.readValue(reader.schema, dec)
+	if err != nil {
 		return err
 	}
 
-	newValue := dereference(reflect.ValueOf(value))
+	newValue := reflect.ValueOf(value)
+	// dereference the value if needed
+	if newValue.Kind() == reflect.Ptr {
+		newValue = newValue.Elem()
+	}
 
 	//set the new value
 	rv.Set(newValue)
