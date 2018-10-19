@@ -2,7 +2,6 @@ package avro
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -111,9 +110,6 @@ type Schema interface {
 
 	// Checks whether the given value is writeable to this schema.
 	Validate(v reflect.Value) bool
-
-	// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-	Project(value interface{}, into Schema) (interface{}, error)
 }
 
 // StringSchema implements Schema and represents Avro string type.
@@ -141,26 +137,13 @@ func (*StringSchema) Prop(key string) (interface{}, bool) {
 
 // Validate checks whether the given value is writeable to this schema.
 func (*StringSchema) Validate(v reflect.Value) bool {
-	_, isString := dereference(v).Interface().(string)
-	_, isBytes := dereference(v).Interface().([]byte)
-	return isString || isBytes
+	_, ok := dereference(v).Interface().(string)
+	return ok
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
 func (*StringSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"string"`), nil
-}
-
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*StringSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	switch into.Type() {
-	case String:
-		return value, nil
-	case Bytes:
-		return []byte(value.(string)), nil
-	default:
-		return nil, errors.New("Could not project String value into reader schema: " + into.String())
-	}
 }
 
 // BytesSchema implements Schema and represents Avro bytes type.
@@ -198,18 +181,6 @@ func (*BytesSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"bytes"`), nil
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*BytesSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	switch into.Type() {
-	case Bytes:
-		return value, nil
-	case String:
-		return string(value.([]byte)), nil
-	default:
-		return nil, errors.New("Could not project Bytes value into reader schema: " + into.String())
-	}
-}
-
 // IntSchema implements Schema and represents Avro int type.
 type IntSchema struct{}
 
@@ -241,22 +212,6 @@ func (*IntSchema) Validate(v reflect.Value) bool {
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
 func (*IntSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"int"`), nil
-}
-
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*IntSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	switch into.Type() {
-	case Int:
-		return value, nil
-	case Long:
-		return int64(value.(int32)), nil
-	case Float:
-		return float32(value.(int32)), nil
-	case Double:
-		return float64(value.(int32)), nil
-	default:
-		return nil, errors.New("Could not project Int value into reader schema: " + into.String())
-	}
 }
 
 // LongSchema implements Schema and represents Avro long type.
@@ -292,20 +247,6 @@ func (*LongSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"long"`), nil
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*LongSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	switch into.Type() {
-	case Long:
-		return value, nil
-	case Float:
-		return float32(value.(int64)), nil
-	case Double:
-		return float64(value.(int64)), nil
-	default:
-		return nil, errors.New("Could not project Long value into reader schema: " + into.String())
-	}
-}
-
 // FloatSchema implements Schema and represents Avro float type.
 type FloatSchema struct{}
 
@@ -337,18 +278,6 @@ func (*FloatSchema) Validate(v reflect.Value) bool {
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
 func (*FloatSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"float"`), nil
-}
-
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*FloatSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	switch into.Type() {
-	case Float:
-		return value, nil
-	case Double:
-		return float64(value.(float32)), nil
-	default:
-		return nil, errors.New("Could not project Float value into reader schema: " + into.String())
-	}
 }
 
 // DoubleSchema implements Schema and represents Avro double type.
@@ -384,11 +313,6 @@ func (*DoubleSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"double"`), nil
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*DoubleSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	return value, nil
-}
-
 // BooleanSchema implements Schema and represents Avro boolean type.
 type BooleanSchema struct{}
 
@@ -420,11 +344,6 @@ func (*BooleanSchema) Validate(v reflect.Value) bool {
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
 func (*BooleanSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"boolean"`), nil
-}
-
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*BooleanSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	return value, nil
 }
 
 // NullSchema implements Schema and represents Avro null type.
@@ -480,11 +399,6 @@ func (*NullSchema) Validate(v reflect.Value) bool {
 	return false
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (*NullSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	return value, nil
-}
-
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
 func (*NullSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"null"`), nil
@@ -498,7 +412,6 @@ type RecordSchema struct {
 	Aliases    []string `json:"aliases,omitempty"`
 	Properties map[string]interface{}
 	Fields     []*SchemaField `json:"fields"`
-	AliasIndex map[string]int
 }
 
 // String returns a JSON representation of RecordSchema.
@@ -589,67 +502,6 @@ func (s *RecordSchema) Validate(v reflect.Value) bool {
 	return true
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (s *RecordSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	switch into.Type() {
-	case Record:
-		intoRecord := into.(*RecordSchema)
-		if intoRecord.GetName() != s.GetName() {
-			//TODO Record alias check with namespaces
-			return nil, errors.New("TODO Record alias check")
-		}
-		switch v := value.(type) {
-		case *GenericRecord:
-			result := NewGenericRecord(into)
-			NextReaderField:
-			for _, intoField := range intoRecord.Fields {
-				checkField := func(name string) (bool, error) {
-					if w, ok := s.AliasIndex[name]; ok {
-						writerField := s.Fields[w]
-						//TODO instead of v.Get(string) there should also be v.GetByIndex(int) as in IndexedRecord
-						//TODO instead of v.Set(string) there should also be v.SetByIndex(int,...) as in IndexedRecord
-						if projectedValue, err := writerField.Type.Project(v.Get(writerField.Name), intoField.Type); err != nil {
-							return false, err
-						} else {
-							result.Set(intoField.Name, projectedValue)
-							return true, nil
-						}
-
-					}
-					return false, nil
-				}
-				if match, err := checkField(intoField.Name); err != nil {
-					return nil, err
-				} else if match {
-					continue NextReaderField
-				}
-				for _, intoFieldAlias := range intoField.Aliases {
-					if match, err := checkField(intoFieldAlias); err != nil {
-						return nil, err
-					} else if match {
-						continue NextReaderField
-					}
-				}
-				if intoField.Default == nil {
-					return nil, errors.New("Schema field doesn't have any default value: " + intoField.Name)
-				} else {
-					result.Set(intoField.Name, intoField.Default)
-				}
-			}
-			return result, nil
-		default:
-			panic(reflect.TypeOf(v))
-		}
-
-		/*
-if the reader's record schema has a field with no default value, and writer's schema does not have a field with the same name, an error is signalled.
-		 */
-		panic(intoRecord)
-	default:
-		return nil, errors.New("Record can only be projected into another Record")
-	}
-}
-
 // RecursiveSchema implements Schema and represents Avro record type without a definition (e.g. that should be looked up).
 type RecursiveSchema struct {
 	Actual *RecordSchema
@@ -691,26 +543,19 @@ func (s *RecursiveSchema) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, s.Actual.GetName())), nil
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (s *RecursiveSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	//TODO todo probably delegate to RecordSchema.Project(..)
-	return value, nil
-}
-
 // SchemaField represents a schema field for Avro record.
 type SchemaField struct {
 	Name       string      `json:"name,omitempty"`
 	Doc        string      `json:"doc,omitempty"`
 	Default    interface{} `json:"default"`
 	Type       Schema      `json:"type,omitempty"`
-	Aliases    []string    `json:"aliases,omitempty"`
 	Properties map[string]interface{}
 }
 
 // Gets a custom non-reserved property from this schemafield and a bool representing if it exists.
-func (s *SchemaField) Prop(key string) (interface{}, bool) {
-	if s.Properties != nil {
-		if prop, ok := s.Properties[key]; ok {
+func (this *SchemaField) Prop(key string) (interface{}, bool) {
+	if this.Properties != nil {
+		if prop, ok := this.Properties[key]; ok {
 			return prop, true
 		}
 	}
@@ -724,13 +569,11 @@ func (s *SchemaField) MarshalJSON() ([]byte, error) {
 			Name    string      `json:"name,omitempty"`
 			Doc     string      `json:"doc,omitempty"`
 			Default interface{} `json:"default"`
-			Aliases []string    `json:"aliases,omitempty"`
 			Type    Schema      `json:"type,omitempty"`
 		}{
 			Name:    s.Name,
 			Doc:     s.Doc,
 			Default: s.Default,
-			Aliases: s.Aliases,
 			Type:    s.Type,
 		})
 	}
@@ -739,13 +582,11 @@ func (s *SchemaField) MarshalJSON() ([]byte, error) {
 		Name    string      `json:"name,omitempty"`
 		Doc     string      `json:"doc,omitempty"`
 		Default interface{} `json:"default,omitempty"`
-		Aliases []string    `json:"aliases,omitempty"`
 		Type    Schema      `json:"type,omitempty"`
 	}{
 		Name:    s.Name,
 		Doc:     s.Doc,
 		Default: s.Default,
-		Aliases: s.Aliases,
 		Type:    s.Type,
 	})
 }
@@ -819,15 +660,6 @@ func (s *EnumSchema) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (s *EnumSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	/*TODO
-	if both are enums:
-	if the writer's symbol is not present in the reader's enum, then an error is signalled.
-	*/
-	panic("TODO")
-}
-
 // ArraySchema implements Schema and represents Avro array type.
 type ArraySchema struct {
 	Items      Schema
@@ -884,15 +716,6 @@ func (s *ArraySchema) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (s *ArraySchema) Project(value interface{}, into Schema) (interface{}, error) {
-	/*TODO
-	if both are arrays:
-	This resolution algorithm is applied recursively to the reader's and writer's array item schemas.
-	*/
-	panic("TODO")
-}
-
 // MapSchema implements Schema and represents Avro map type.
 type MapSchema struct {
 	Values     Schema
@@ -945,15 +768,6 @@ func (s *MapSchema) MarshalJSON() ([]byte, error) {
 		Type:   "map",
 		Values: s.Values,
 	})
-}
-
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (s *MapSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	/*TODO
-	if both are maps:
-	This resolution algorithm is applied recursively to the reader's and writer's value schemas.
-	*/
-	panic("TODO")
 }
 
 // UnionSchema implements Schema and represents Avro union type.
@@ -1016,21 +830,6 @@ func (s *UnionSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Types)
 }
 
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (s *UnionSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	/*TODO
-	if both are unions:
-	The first schema in the reader's union that matches the selected writer's union schema is recursively resolved against it. if none match, an error is signalled.
-
-	if reader's is a union, but writer's is not
-	The first schema in the reader's union that matches the writer's schema is recursively resolved against it. If none match, an error is signalled.
-
-	if writer's is a union, but reader's is not
-	If the reader's schema matches the selected writer's schema, it is recursively resolved against it. If they do not match, an error is signalled.
-	*/
-	panic("TODO")
-}
-
 // FixedSchema implements Schema and represents Avro fixed type.
 type FixedSchema struct {
 	Namespace  string
@@ -1087,11 +886,6 @@ func (s *FixedSchema) MarshalJSON() ([]byte, error) {
 		Size: s.Size,
 		Name: s.Name,
 	})
-}
-
-// Project this (writer) schema onto a different reader schema using avro schema resolution rules
-func (s *FixedSchema) Project(value interface{}, into Schema) (interface{}, error) {
-	return value, nil
 }
 
 // GetFullName returns a fully-qualified name for a schema if possible. The format is namespace.name.
@@ -1277,7 +1071,6 @@ func parseRecordSchema(v map[string]interface{}, registry map[string]Schema, nam
 	setOptionalField(&namespace, v, schemaNamespaceField)
 	setOptionalField(&schema.Doc, v, schemaDocField)
 	addSchema(getFullName(v[schemaNameField].(string), namespace), newRecursiveSchema(schema), registry)
-	schema.AliasIndex = make(map[string]int)
 	fields := make([]*SchemaField, len(v[schemaFieldsField].([]interface{})))
 	for i := range fields {
 		field, err := parseSchemaField(v[schemaFieldsField].([]interface{})[i], registry, namespace)
@@ -1285,10 +1078,6 @@ func parseRecordSchema(v map[string]interface{}, registry map[string]Schema, nam
 			return nil, err
 		}
 		fields[i] = field
-		schema.AliasIndex[field.Name] = i
-		for _, alias := range field.Aliases {
-			schema.AliasIndex[alias] = i
-		}
 	}
 	schema.Fields = fields
 	schema.Properties = getProperties(v)
@@ -1305,17 +1094,11 @@ func parseSchemaField(i interface{}, registry map[string]Schema, namespace strin
 		}
 		schemaField := &SchemaField{Name: name, Properties: getProperties(v)}
 		setOptionalField(&schemaField.Doc, v, schemaDocField)
-		if aliases, ok := v[schemaAliasesField]; ok {
-			for _, a := range aliases.([]interface{}) {
-				schemaField.Aliases = append(schemaField.Aliases, a.(string))
-			}
-		}
 		fieldType, err := schemaByType(v[schemaTypeField], registry, namespace)
 		if err != nil {
 			return nil, err
 		}
 		schemaField.Type = fieldType
-
 		if def, exists := v[schemaDefaultField]; exists {
 			switch def.(type) {
 			case float64:
