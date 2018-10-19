@@ -2,7 +2,6 @@ package avro
 
 import (
 	"bytes"
-	"log"
 	"reflect"
 	"testing"
 )
@@ -220,15 +219,16 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-	r2 := NewDatumProjector(schemaV1, schemaV2)
+	r2 := NewDatumProjector(schemaV2, schemaV1)
 	recV2 := new(RecV2)
 	if err := r2.Read(recV2, NewBinaryDecoder(buf2.Bytes())); err != nil {
 		panic(err)
 	}
 
-	log.Println(recV1)
-	log.Println(recV2)
-	if !reflect.DeepEqual(recV1, recV2) {
+
+	if recV2.Key != string(recV1.Id) ||
+		recV2.Sum != int64(recV1.Sum) ||
+		len(recV2.List) != 3 {
 		panic("record compare failed")
 	}
 
