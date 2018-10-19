@@ -2,6 +2,7 @@ package avro
 
 import (
 	"bytes"
+	"log"
 	"reflect"
 	"testing"
 )
@@ -178,30 +179,30 @@ func TestProjections(t *testing.T) {
 					]
 				}`)
 
-	genRecV1 := NewGenericRecord(schemaV1)
-	genRecV1.Set("sum", int32(99))
-	genRecV1.Set("id", []byte("key1"))
-
-	var buf bytes.Buffer
-	w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
-	if err := w.Write(genRecV1, NewBinaryEncoder(&buf)); err != nil {
-		panic(err)
-	}
-
-	r := NewGenericDatumReader().SetSchema(schemaV2).SetWriterSchema(schemaV1)
-	decodedRecord := NewGenericRecord(schemaV2)
-	if err := r.Read(decodedRecord, NewBinaryDecoder(buf.Bytes())); err != nil {
-		panic(err)
-	}
-
-	//log.Println(decodedRecord)
-	if decodedRecord.String() != `{"key":"key1","list":[1,2,3],"sum":99}` {
-		panic("projection failed")
-	}
-	if decodedRecord.Get("key").(string) != "key1" ||
-		decodedRecord.Get("sum").(int64) != 99 {
-		panic("projection failed")
-	}
+	//genRecV1 := NewGenericRecord(schemaV1)
+	//genRecV1.Set("sum", int32(99))
+	//genRecV1.Set("id", []byte("key1"))
+	//
+	//var buf bytes.Buffer
+	//w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
+	//if err := w.Write(genRecV1, NewBinaryEncoder(&buf)); err != nil {
+	//	panic(err)
+	//}
+	//
+	//r := NewGenericDatumReader().SetSchema(schemaV2).SetWriterSchema(schemaV1)
+	//decodedRecord := NewGenericRecord(schemaV2)
+	//if err := r.Read(decodedRecord, NewBinaryDecoder(buf.Bytes())); err != nil {
+	//	panic(err)
+	//}
+	//
+	////log.Println(decodedRecord)
+	//if decodedRecord.String() != `{"key":"key1","list":[1,2,3],"sum":99}` {
+	//	panic("projection failed")
+	//}
+	//if decodedRecord.Get("key").(string) != "key1" ||
+	//	decodedRecord.Get("sum").(int64) != 99 {
+	//	panic("projection failed")
+	//}
 	type RecV1 struct {
 		Id  []byte
 		Sum int32
@@ -218,17 +219,17 @@ func TestProjections(t *testing.T) {
 	if err := w2.Write(recV1, NewBinaryEncoder(&buf2)); err != nil {
 		panic(err)
 	}
-	//TODO specific record projection
-	//r2 := NewSpecificDatumReader().SetSchema(schemaV1).SetWriterSchema(schemaV2)
-	//recV2 := new(RecV2)
-	//if err := r2.Read(recV2, NewBinaryDecoder(buf2.Bytes())); err != nil {
-	//	panic(err)
-	//}
-	//
-	//log.Println(recV1)
-	//log.Println(recV2)
-	//if !reflect.DeepEqual(recV1, recV2) {
-	//	panic("record compare failed")
-	//}
+
+	r2 := NewDatumProjector(schemaV1, schemaV2)
+	recV2 := new(RecV2)
+	if err := r2.Read(recV2, NewBinaryDecoder(buf2.Bytes())); err != nil {
+		panic(err)
+	}
+
+	log.Println(recV1)
+	log.Println(recV2)
+	if !reflect.DeepEqual(recV1, recV2) {
+		panic("record compare failed")
+	}
 
 }
