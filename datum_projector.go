@@ -198,7 +198,17 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		default:
 			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
-		//TODO case Fixed:
+	case Fixed:
+		size := writerSchema.(*FixedSchema).Size
+		switch  {
+		case writerSchema.Type() == Fixed && readerSchema.(*FixedSchema).Size == size:
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				fixed := make([]byte, size)
+				return fixed, dec.ReadFixed(fixed)
+			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
 		//TODO case Enum:
 		//TODO case Array:
 		//TODO case Map:
@@ -237,7 +247,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		}
 		for _, readerField := range readerRecordSchema.Fields {
 			if _, ok := defaultIndexMap[readerField.Name]; !ok {
-				//TODO this functionality should be part of Schema type
+				//TODO converting default values to native types should be probably a method of Schema type
 				defaultUnwrapperMap[readerField.Name] = readerField.Default
 				var defaultValue reflect.Value
 				switch readerField.Type.Type() {
