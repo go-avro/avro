@@ -36,21 +36,17 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 	if writerSchema.Type() == Union {
 		if readerSchema.Type() == Union {
 			writerUnionSchema := writerSchema.(*UnionSchema)
-			variants := make([]*Projection, len(writerUnionSchema.Types))
+			variants := make(map[int32]*Projection)
 			for i, t := range writerUnionSchema.Types {
-				variants[i] = newProjection(t, t)
+				variants[int32(i)] = newProjection(t, t)
 			}
-			return unionProjection(readerSchema.(*UnionSchema), writerUnionSchema, variants)
+			return unionProjection(variants)
 		} else {
-			for _, t := range writerSchema.(*UnionSchema).Types {
+			for i, t := range writerSchema.(*UnionSchema).Types {
 				if t.Type() == readerSchema.Type() && t.GetName() == readerSchema.GetName() {
-					variants := make([]*Projection, len(writerSchema.(*UnionSchema).Types))
-					for i, t := range writerSchema.(*UnionSchema).Types {
-						if t.Type() == readerSchema.Type() {
-							variants[i] = newProjection(readerSchema, t)
-						}
-					}
-					return unionProjection(readerSchema, writerSchema.(*UnionSchema), variants)
+					variants := make(map[int32]*Projection)
+					variants[int32(i)] = newProjection(readerSchema, t)
+					return unionProjection(variants)
 				}
 			}
 			panic(fmt.Errorf("writer Union does not match reader schema: %v", readerSchema))
@@ -212,6 +208,34 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		case Array:
 			writerArraySchema := writerSchema.(*ArraySchema)
 			itemProjection := newProjection(readerArraySchema.Items, writerArraySchema.Items)
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				arrayLength, err := dec.ReadArrayStart()
+				if err != nil {
+					return nil, err
+				}
+
+				var array []interface{}
+				for arrayLength > 0 {
+					arrayPart := make([]interface{}, arrayLength, arrayLength)
+					var i int64
+					for ; i < arrayLength; i++ {
+						val, err := itemProjection.Unwrap(dec)
+						if err != nil {
+							return nil, err
+						}
+						arrayPart[i] = val
+					}
+					concatArray := make([]interface{}, len(array)+int(arrayLength), cap(array)+int(arrayLength))
+					copy(concatArray, array)
+					copy(concatArray, arrayPart)
+					array = concatArray
+					arrayLength, err = dec.ArrayNext()
+					if err != nil {
+						return nil, err
+					}
+				}
+				return array, nil
+			}
 			result.Project = func(target reflect.Value, dec Decoder) error {
 				arrayLength, err := dec.ReadArrayStart()
 				if err != nil {
@@ -244,146 +268,159 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 				target.Set(array)
 				return nil
 			}
-			result.Unwrap = func(dec Decoder) (interface{}, error) {
-				arrayLength, err := dec.ReadArrayStart()
-				if err != nil {
-					return nil, err
-				}
-
-				var array []interface{}
-				for arrayLength > 0 {
-					arrayPart := make([]interface{}, arrayLength, arrayLength)
-					var i int64
-					for ; i < arrayLength; i++ {
-						val, err := itemProjection.Unwrap(dec)
-						if err != nil {
-							return nil, err
-						}
-						arrayPart[i] = val
-					}
-					concatArray := make([]interface{}, len(array)+int(arrayLength), cap(array)+int(arrayLength))
-					copy(concatArray, array)
-					copy(concatArray, arrayPart)
-					array = concatArray
-					arrayLength, err = dec.ArrayNext()
-					if err != nil {
-						return nil, err
-					}
-				}
-				return array, nil
-			}
 		default:
 			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
 
-
 	case Map:
-		panic("TODO")
+		readerMapSchema := readerSchema.(*MapSchema)
+		switch writerSchema.Type() {
+		case Map:
+			writerMapSchema := writerSchema.(*MapSchema)
+			valueProjection := newProjection(readerMapSchema.Values, writerMapSchema.Values)
+			keyProjection := newProjection(&StringSchema{}, &StringSchema{})
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				mapLength, err := dec.ReadMapStart()
+				if err != nil {
+					return nil, err
+				}
+				resultMap := make(map[string]interface{}, mapLength)
+				for mapLength > 0 {
+					var i int64
+					for ; i < mapLength; i++ {
+						if key, err := keyProjection.Unwrap(dec); err != nil {
+							return nil, err
+						} else if val, err := valueProjection.Unwrap(dec); err != nil {
+							return nil, err
+						} else {
+							resultMap[key.(string)] = val
+						}
+					}
+
+					mapLength, err = dec.MapNext()
+
+				}
+				return resultMap, nil
+			}
+
+			result.Project = func(target reflect.Value, dec Decoder) error {
+				mapLength, err := dec.ReadMapStart()
+				if err != nil {
+					return err
+				}
+				elemType := target.Type().Elem()
+				elemIsPointer := elemType.Kind() == reflect.Ptr
+				indirectMapType := target.Type()
+				if indirectMapType.Kind() == reflect.Ptr {
+					indirectMapType = indirectMapType.Elem()
+				}
+				resultMap := reflect.MakeMap(indirectMapType)
+				for mapLength > 0 {
+					var i int64
+					for ; i < mapLength; i++ {
+						k := ""
+						key := reflect.ValueOf(&k).Elem()
+						v := reflect.New(target.Type().Elem()).Interface()
+						val := reflect.ValueOf(v).Elem()
+						if err := keyProjection.Project(key, dec); err != nil {
+							return err
+						} else if err := valueProjection.Project(val, dec); err != nil {
+							return err
+						} else {
+							if !elemIsPointer && val.Kind() == reflect.Ptr {
+								resultMap.SetMapIndex(key, val.Elem())
+							} else {
+								resultMap.SetMapIndex(key, val)
+							}
+						}
+					}
+
+					mapLength, err = dec.MapNext()
+
+				}
+				target.Set(resultMap)
+				return nil
+			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
 	case Record:
 		readerRecordSchema := readerSchema.(*RecordSchema)
-		writerRecordSchema := writerSchema.(*RecordSchema)
-		defaultUnwrapperMap := make(map[string]interface{}, 0)
-		defaultIndexMap := make(map[string]reflect.Value, 0)
-		projectNameMap := make([]string, len(writerRecordSchema.Fields))
-		projectIndexMap := make([]*Projection, len(writerRecordSchema.Fields))
-	NextReaderField:
-		for w, writerField := range writerRecordSchema.Fields {
-			//match by name
-			for _, readerField := range readerRecordSchema.Fields {
-				if writerField.Name == readerField.Name {
-					defaultIndexMap[readerField.Name] = reflect.ValueOf(nil)
-					projectNameMap[w] = readerField.Name
-					projectIndexMap[w] = newProjection(readerField.Type, writerField.Type)
-					continue NextReaderField
-				}
-			}
-			//match by alias
-			for _, readerField := range readerRecordSchema.Fields {
-				for _, intoFieldAlias := range readerField.Aliases {
-					if writerField.Name == intoFieldAlias {
+		switch writerSchema.Type() {
+		case Record:
+			writerRecordSchema := writerSchema.(*RecordSchema)
+			defaultUnwrapperMap := make(map[string]interface{}, 0)
+			defaultIndexMap := make(map[string]reflect.Value, 0)
+			projectNameMap := make([]string, len(writerRecordSchema.Fields))
+			projectIndexMap := make([]*Projection, len(writerRecordSchema.Fields))
+		NextReaderField:
+			for w, writerField := range writerRecordSchema.Fields {
+				//match by name
+				for _, readerField := range readerRecordSchema.Fields {
+					if writerField.Name == readerField.Name {
 						defaultIndexMap[readerField.Name] = reflect.ValueOf(nil)
 						projectNameMap[w] = readerField.Name
 						projectIndexMap[w] = newProjection(readerField.Type, writerField.Type)
 						continue NextReaderField
 					}
 				}
+				//match by alias
+				for _, readerField := range readerRecordSchema.Fields {
+					for _, intoFieldAlias := range readerField.Aliases {
+						if writerField.Name == intoFieldAlias {
+							defaultIndexMap[readerField.Name] = reflect.ValueOf(nil)
+							projectNameMap[w] = readerField.Name
+							projectIndexMap[w] = newProjection(readerField.Type, writerField.Type)
+							continue NextReaderField
+						}
+					}
+				}
+				//removed fields
+				projectIndexMap[w] = newProjection(writerField.Type, writerField.Type)
 			}
-			//removed fields
-			projectIndexMap[w] = newProjection(writerField.Type, writerField.Type)
-		}
-		for _, readerField := range readerRecordSchema.Fields {
-			if _, ok := defaultIndexMap[readerField.Name]; !ok {
-				//TODO converting default values to native types should be probably a method of Schema type
-				defaultUnwrapperMap[readerField.Name] = readerField.Default
-				var defaultValue reflect.Value
-				switch readerField.Type.Type() {
-				case Array:
-					a := readerField.Default.([]interface{})
-					if len(a) > 0 {
-						switch readerField.Type.(*ArraySchema).Items.Type() {
-						case Long:
-							defaultValue = reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(int64(0))), len(a), len(a))
-							switch reflect.TypeOf(a[0]).Kind() {
-							case reflect.Float64:
-								for i, x := range a {
-									defaultValue.Index(i).Set(reflect.ValueOf(int64(x.(float64))))
+			for _, readerField := range readerRecordSchema.Fields {
+				if _, ok := defaultIndexMap[readerField.Name]; !ok {
+					//TODO converting default values to native types should be probably a method of Schema type
+					defaultUnwrapperMap[readerField.Name] = readerField.Default
+					var defaultValue reflect.Value
+					switch readerField.Type.Type() {
+					case Array:
+						a := readerField.Default.([]interface{})
+						if len(a) > 0 {
+							switch readerField.Type.(*ArraySchema).Items.Type() {
+							case Long:
+								defaultValue = reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(int64(0))), len(a), len(a))
+								switch reflect.TypeOf(a[0]).Kind() {
+								case reflect.Float64:
+									for i, x := range a {
+										defaultValue.Index(i).Set(reflect.ValueOf(int64(x.(float64))))
+									}
+								default:
+									panic(fmt.Errorf("TODO default converter from %q", reflect.TypeOf(a[0])))
 								}
 							default:
-								panic(fmt.Errorf("TODO default converter from %q", reflect.TypeOf(a[0])))
+								panic(fmt.Errorf("TODO default converter to %q", readerField.Type.(*ArraySchema).Items))
 							}
-						default:
-							panic(fmt.Errorf("TODO default converter to %q", readerField.Type.(*ArraySchema).Items))
+
 						}
-
+					default:
+						defaultValue = reflect.ValueOf(readerField.Default)
 					}
-				default:
-					defaultValue = reflect.ValueOf(readerField.Default)
+					defaultIndexMap[readerField.Name] = defaultValue
+				} else {
+					delete(defaultIndexMap, readerField.Name)
 				}
-				defaultIndexMap[readerField.Name] = defaultValue
-			} else {
-				delete(defaultIndexMap, readerField.Name)
 			}
-		}
 
-		result.Unwrap = func(dec Decoder) (interface{}, error) {
-			record := NewGenericRecord(readerRecordSchema)
-			for f := range projectIndexMap {
-				field := writerRecordSchema.Fields[f]
-				if projectIndexMap[f].Unwrap == nil {
-					return nil, fmt.Errorf("TODO Unwrap for %q", field.Type)
-				}
-				if writerValue, err := projectIndexMap[f].Unwrap(dec); err != nil {
-					return nil, err
-				} else if writerValue != nil {
-					if projectNameMap[f] != "" { //deleted fields don't have a mapped name
-						record.Set(projectNameMap[f], writerValue)
-					}
-				}
-			}
-			if len(defaultIndexMap) > 0 {
-				for d := range defaultUnwrapperMap {
-					record.Set(d, defaultUnwrapperMap[d])
-				}
-			}
-			return record, nil
-		}
-
-		result.Project = func(target reflect.Value, dec Decoder) error {
-			if target.Kind() == reflect.Ptr && !target.Elem().IsValid() {
-				target.Set(reflect.New(target.Type().Elem()))
-			}
-			target = dereference(target)
-			switch target.Interface().(type) {
-			case GenericRecord:
-
-				record := target.Interface().(GenericRecord)
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				record := NewGenericRecord(readerRecordSchema)
 				for f := range projectIndexMap {
 					field := writerRecordSchema.Fields[f]
 					if projectIndexMap[f].Unwrap == nil {
-						return fmt.Errorf("TODO Unwrap for %q", field.Type)
+						return nil, fmt.Errorf("TODO Unwrap for %q", field.Type)
 					}
 					if writerValue, err := projectIndexMap[f].Unwrap(dec); err != nil {
-						return err
+						return nil, err
 					} else if writerValue != nil {
 						if projectNameMap[f] != "" { //deleted fields don't have a mapped name
 							record.Set(projectNameMap[f], writerValue)
@@ -395,35 +432,68 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 						record.Set(d, defaultUnwrapperMap[d])
 					}
 				}
-			default:
-				for f := range projectIndexMap {
-					//field := writerRecordSchema.Fields[f]
-					structField := target.FieldByName(projectNameMap[f])
-					if !structField.IsValid() {
-						structField = target.FieldByName(strings.Title(projectNameMap[f]))
-						if !structField.IsValid() {
-							projectIndexMap[f].Unwrap(dec) //still have to read deleted fields from the writer value
-							continue
+				return record, nil
+			}
+
+			result.Project = func(target reflect.Value, dec Decoder) error {
+				if target.Kind() == reflect.Ptr && !target.Elem().IsValid() {
+					target.Set(reflect.New(target.Type().Elem()))
+				}
+				target = dereference(target)
+				switch target.Interface().(type) {
+				case GenericRecord:
+
+					record := target.Interface().(GenericRecord)
+					for f := range projectIndexMap {
+						field := writerRecordSchema.Fields[f]
+						if projectIndexMap[f].Unwrap == nil {
+							return fmt.Errorf("TODO Unwrap for %q", field.Type)
+						}
+						if writerValue, err := projectIndexMap[f].Unwrap(dec); err != nil {
+							return err
+						} else if writerValue != nil {
+							if projectNameMap[f] != "" { //deleted fields don't have a mapped name
+								record.Set(projectNameMap[f], writerValue)
+							}
 						}
 					}
-
-					if err := projectIndexMap[f].Project(structField, dec); err != nil {
-						return err
+					if len(defaultIndexMap) > 0 {
+						for d := range defaultUnwrapperMap {
+							record.Set(d, defaultUnwrapperMap[d])
+						}
 					}
-				}
-				if len(defaultIndexMap) > 0 {
-					for d := range defaultIndexMap {
-						if field := target.FieldByName(d); field.IsValid() {
-							field.Set(defaultIndexMap[d])
-						} else {
-							if field = target.FieldByName(strings.Title(d)); field.IsValid() {
+				default:
+					for f := range projectIndexMap {
+						//field := writerRecordSchema.Fields[f]
+						structField := target.FieldByName(projectNameMap[f])
+						if !structField.IsValid() {
+							structField = target.FieldByName(strings.Title(projectNameMap[f]))
+							if !structField.IsValid() {
+								projectIndexMap[f].Unwrap(dec) //still have to read deleted fields from the writer value
+								continue
+							}
+						}
+
+						if err := projectIndexMap[f].Project(structField, dec); err != nil {
+							return err
+						}
+					}
+					if len(defaultIndexMap) > 0 {
+						for d := range defaultIndexMap {
+							if field := target.FieldByName(d); field.IsValid() {
 								field.Set(defaultIndexMap[d])
+							} else {
+								if field = target.FieldByName(strings.Title(d)); field.IsValid() {
+									field.Set(defaultIndexMap[d])
+								}
 							}
 						}
 					}
 				}
+				return nil
 			}
-			return nil
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
 	case Enum:
 		//TODO implement Enum projection once Enum representation is finalized
@@ -437,19 +507,18 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 	return result
 }
 
-func unionProjection(reader Schema, writer *UnionSchema, variants []*Projection) *Projection {
+func unionProjection(variants map[int32]*Projection) *Projection {
 	result := &Projection{}
 	result.Unwrap = func(dec Decoder) (interface{}, error) {
 		unionIndex, err := dec.ReadInt()
 		if err != nil {
 			return reflect.ValueOf(unionIndex), err
 		}
-
-		if unionIndex < 0 || int(unionIndex) >= len(variants) {
+		if p, ok := variants[unionIndex]; ! ok {
 			return reflect.Value{}, fmt.Errorf("invalid union index %d", unionIndex)
+		} else {
+			return p.Unwrap(dec)
 		}
-
-		return variants[unionIndex].Unwrap(dec)
 
 	}
 	result.Project = func(target reflect.Value, dec Decoder) error {
@@ -458,12 +527,12 @@ func unionProjection(reader Schema, writer *UnionSchema, variants []*Projection)
 			return err
 		}
 
-		if unionIndex < 0 || int(unionIndex) >= len(variants) {
+		if p, ok := variants[unionIndex]; ok {
+			return p.Project(target, dec)
+		} else {
 			return fmt.Errorf("invalid union index %d", unionIndex)
 		}
-		return variants[unionIndex].Project(target, dec)
+
 	}
 	return result
 }
-
-//func mapArray(value []interface{})

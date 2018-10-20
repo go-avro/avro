@@ -2,7 +2,6 @@ package avro
 
 import (
 	"bytes"
-	"log"
 	"reflect"
 	"testing"
 )
@@ -166,6 +165,7 @@ func TestProjections(t *testing.T) {
 						{ "name": "sum", "type": "int" },
 						{ "name": "longToDouble", "type": "long" },
 						{ "name": "id", "type": "bytes" },
+						{ "name": "fixed5", "type": { "type": "fixed", "size": 5, "name": "Prefix" } },
 						{ "name": "nested", "type": {
 							"name": "Nested", 
 							"type": "record", 
@@ -184,7 +184,17 @@ func TestProjections(t *testing.T) {
 									{ "name": "renamed", "type": "int" }
 								]
 							}
-						] }
+						] },
+						{
+							"name": "mapOfUnions",
+							"type": {
+								"type": "map",
+								"values": [
+									"null",
+									"string"
+								]
+							}
+						}
 					] 
 				}`)
 
@@ -197,6 +207,7 @@ func TestProjections(t *testing.T) {
 						{ "name": "sum", "type": "long" },
 						{ "name": "longToDouble", "type": "double" },
 						{ "name": "added", "type": { "type": "array", "items": "long" }, "default": [1,2,3] },
+						{ "name": "fixed5", "type": [ "null", { "type": "fixed", "size": 5, "name": "Prefix" } ] },
 						{ "name": "nested", "type": [
 							"null", 
 							{
@@ -215,7 +226,15 @@ func TestProjections(t *testing.T) {
 							"fields": [ 
 								{ "name": "newname", "type": "int", "aliases": ["renamed"] } 
 							] 
-						}}
+						}},
+						{
+							"name": "mapOfStrings",
+							"aliases": ["mapOfUnions"],
+							"type": {
+								"type": "map",	
+								"values": "string"
+							}
+						}
 					]
 				}`)
 
@@ -229,11 +248,12 @@ func TestProjections(t *testing.T) {
 	genRecV1.Set("sum", int32(99))
 	genRecV1.Set("id", []byte("key1"))
 	genRecV1.Set("longToDouble", int64(12345))
-	genRecV1.Set("itemChanged", []string{ "K", "L", "M", "N", "O" })
+	genRecV1.Set("fixed5", []byte{1, 2, 3, 4, 5})
+	genRecV1.Set("itemChanged", []string{"K", "L", "M", "N", "O"})
 	genNestedV1 := NewGenericRecord(schemaV1.(*RecordSchema).Fields[4].Type)
 	genNestedV1.Set("renamed", int32(888))
 	genRecV1.Set("nested", genNestedV1)
-	//TODO test fixed
+	genRecV1.Set("mapOfUnions", map[string]interface{}{"some": "some"})
 	b := true
 	genRecV1.Set("boolOption", &b)
 	gen2NestedV1 := NewGenericRecord(schemaV1.(*RecordSchema).Fields[4].Type)
@@ -251,13 +271,15 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-	log.Println(decodedRecord)
+	//log.Println(decodedRecord)
 	if decodedRecord.Get("key").(string) != "key1" ||
 		decodedRecord.Get("sum").(int64) != 99 ||
 		len(decodedRecord.Get("added").([]interface{})) != 3 ||
 		len(decodedRecord.Get("itemChanged").([]interface{})) != 5 ||
 		!reflect.DeepEqual(decodedRecord.Get("itemChanged").([]interface{})[4].([]byte), []byte("O")) ||
 		decodedRecord.Get("nested").(*GenericRecord).Get("newname").(int32) != 888 ||
+		len(decodedRecord.Get("mapOfStrings").(map[string]interface{})) != 1 ||
+		decodedRecord.Get("mapOfStrings").(map[string]interface{})["some"] != "some" ||
 		decodedRecord.Get("nestedOption").(*GenericRecord).Get("newname").(int32) != 777 {
 		panic("generic projection failed")
 	}
@@ -270,9 +292,11 @@ func TestProjections(t *testing.T) {
 		Deleted      int32
 		Id           []byte
 		Sum          int32
+		Fixed5       []byte
 		ItemChanged  []string
 		LongToDouble int64
 		Nested       NestedV1
+		MapOfUnions  map[string]*string
 		BoolOption   *bool
 		NestedOption *NestedV1
 		//ExtendedEnum *GenericEnum
@@ -286,20 +310,25 @@ func TestProjections(t *testing.T) {
 		Key          string                         //renamed and promoted
 		Sum          int64                          //promoted
 		LongToDouble float64                        //promoted
-		ItemChanged  [][]byte						//array item type promoted
+		Fixed5       *[]byte                        //fixed evolved into union(null, fixed)
+		ItemChanged  [][]byte                       //array item type promoted
 		Added        []int64 `avro:default,[1,2,3]` // didn't exist
+		MapOfStrings map[string]string              //map changed type from union(null, string) to string
 		Nested       *NestedV2                      //was struct, now union option
 		BoolOption   *bool                          //unchanged
 		NestedOption NestedV2                       //was union option, now struct
 	}
 
+	some := "some"
 	recV1 := &RecV1{
 		500,
 		[]byte("key1"),
 		1000,
-		[]string {"K", "L", "M", "N", "O"} ,
+		[]byte{1, 2, 3, 4, 5},
+		[]string{"K", "L", "M", "N", "O"},
 		12345,
 		NestedV1{888},
+		map[string]*string{"some": &some},
 		&b,
 		&NestedV1{777}}
 	var buf2 bytes.Buffer
@@ -313,7 +342,7 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-	log.Println(recV2)
+	//log.Println(recV2)
 	if recV2.Key != string(recV1.Id) ||
 		recV2.Sum != int64(recV1.Sum) ||
 		recV2.LongToDouble != float64(recV1.LongToDouble) ||
@@ -322,6 +351,9 @@ func TestProjections(t *testing.T) {
 		*recV2.BoolOption != true ||
 		len(recV2.ItemChanged) != 5 ||
 		!reflect.DeepEqual(recV2.ItemChanged[4], []byte("O")) ||
+		len(recV2.MapOfStrings) != 1 ||
+		recV2.MapOfStrings["some"] != "some" ||
+		!reflect.DeepEqual(*recV2.Fixed5, []byte{1, 2, 3, 4, 5})  ||
 		recV2.NestedOption.Newname != 777 {
 		panic("specific projection failed")
 	}
