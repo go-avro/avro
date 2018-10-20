@@ -215,6 +215,12 @@ func TestProjections(t *testing.T) {
 					]
 				}`)
 
+	//same projector can read generic as well as specific records, depending on which type is passed to .Read
+	reader := NewDatumProjector(schemaV2, schemaV1)
+	/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+	//test with generic records
 	genRecV1 := NewGenericRecord(schemaV1)
 	genRecV1.Set("deleted", int32(5))
 	genRecV1.Set("sum", int32(99))
@@ -235,9 +241,8 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-	r := NewDatumProjector(schemaV2, schemaV1)
 	decodedRecord := NewGenericRecord(schemaV2)
-	if err := r.Read(decodedRecord, NewBinaryDecoder(buf.Bytes())); err != nil {
+	if err := reader.Read(decodedRecord, NewBinaryDecoder(buf.Bytes())); err != nil {
 		panic(err)
 	}
 
@@ -249,6 +254,9 @@ func TestProjections(t *testing.T) {
 		decodedRecord.Get("nestedOption").(*GenericRecord).Get("newname").(int32) != 777 {
 		panic("generic projection failed")
 	}
+
+
+	//test with specific records
 	type NestedV1 struct {
 		Renamed int32
 	}
@@ -283,9 +291,8 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-	r2 := NewDatumProjector(schemaV2, schemaV1)
 	recV2 := new(RecV2)
-	if err := r2.Read(recV2, NewBinaryDecoder(buf2.Bytes())); err != nil {
+	if err := reader.Read(recV2, NewBinaryDecoder(buf2.Bytes())); err != nil {
 		panic(err)
 	}
 

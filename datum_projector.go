@@ -31,15 +31,6 @@ type Projection struct {
 	Unwrap func(dec Decoder) (interface{}, error)
 }
 
-func (p *Projection) Read(target reflect.Value, dec Decoder) error {
-	if v, err := p.Unwrap(dec); err != nil {
-		return err
-	} else {
-		target.Set(reflect.ValueOf(v))
-	}
-	return nil
-}
-
 func newProjection(readerSchema, writerSchema Schema) *Projection {
 
 	if writerSchema.Type() == Union {
@@ -73,12 +64,18 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 	}
 
 	result := &Projection{}
+	//default projector relies on Unwrap function but for non-primitive schemas this is not used
 	result.Project = func(target reflect.Value, dec Decoder) error {
 		if target.Kind() == reflect.Ptr {
 			target.Set(reflect.New(target.Type().Elem()))
 			target = target.Elem()
 		}
-		return result.Read(target, dec)
+		if v, err := result.Unwrap(dec); err != nil {
+			return err
+		} else {
+			target.Set(reflect.ValueOf(v))
+		}
+		return nil
 	}
 
 	switch readerSchema.Type() {
@@ -219,7 +216,6 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		defaultIndexMap := make(map[string]reflect.Value, 0)
 		projectNameMap := make([]string, len(writerRecordSchema.Fields))
 		projectIndexMap := make([]*Projection, len(writerRecordSchema.Fields))
-		type NoDefault struct{}
 	NextReaderField:
 		for w, writerField := range writerRecordSchema.Fields {
 			//match by name
@@ -263,10 +259,10 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 									defaultValue.Index(i).Set(reflect.ValueOf(int64(x.(float64))))
 								}
 							default:
-								panic(fmt.Errorf("not impelemented %q", reflect.TypeOf(a[0])))
+								panic(fmt.Errorf("TODO default converter from %q", reflect.TypeOf(a[0])))
 							}
 						default:
-							panic(fmt.Errorf("not impelemented %q", readerField.Type.(*ArraySchema).Items))
+							panic(fmt.Errorf("TODO default converter to %q", readerField.Type.(*ArraySchema).Items))
 						}
 
 					}
@@ -284,7 +280,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 			for f := range projectIndexMap {
 				field := writerRecordSchema.Fields[f]
 				if projectIndexMap[f].Unwrap == nil {
-					return nil, fmt.Errorf("unwrap not implemented for %q", field.Type)
+					return nil, fmt.Errorf("TODO Unwrap for %q", field.Type)
 				}
 				if writerValue , err := projectIndexMap[f].Unwrap(dec); err != nil {
 					return nil, err
@@ -314,7 +310,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 				for f := range projectIndexMap {
 					field := writerRecordSchema.Fields[f]
 					if projectIndexMap[f].Unwrap == nil {
-						return fmt.Errorf("unwrap not implemented for %q", field.Type)
+						return fmt.Errorf("TODO Unwrap for %q", field.Type)
 					}
 					if writerValue , err := projectIndexMap[f].Unwrap(dec); err != nil {
 						return err
