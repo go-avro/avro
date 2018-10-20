@@ -28,7 +28,7 @@ func (reader *DatumProjector) Read(target interface{}, dec Decoder) error {
 
 type Projection struct {
 	Project func(target reflect.Value, dec Decoder) error
-	Unwrap func(dec Decoder) (interface{}, error)
+	Unwrap  func(dec Decoder) (interface{}, error)
 }
 
 func newProjection(readerSchema, writerSchema Schema) *Projection {
@@ -64,7 +64,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 	}
 
 	result := &Projection{}
-	//default projector relies on Unwrap function but for non-primitive schemas this is not used
+	//default result.Project(..) relies on Unwrap function but for non-primitive schemas this is not used
 	result.Project = func(target reflect.Value, dec Decoder) error {
 		if target.Kind() == reflect.Ptr {
 			target.Set(reflect.New(target.Type().Elem()))
@@ -197,7 +197,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		}
 	case Fixed:
 		size := writerSchema.(*FixedSchema).Size
-		switch  {
+		switch {
 		case writerSchema.Type() == Fixed && readerSchema.(*FixedSchema).Size == size:
 			result.Unwrap = func(dec Decoder) (interface{}, error) {
 				fixed := make([]byte, size)
@@ -206,9 +206,79 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		default:
 			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
-		//TODO case Enum:
-		//TODO case Array:
-		//TODO case Map:
+	case Array:
+		readerArraySchema := readerSchema.(*ArraySchema)
+		switch writerSchema.Type() {
+		case Array:
+			writerArraySchema := writerSchema.(*ArraySchema)
+			itemProjection := newProjection(readerArraySchema.Items, writerArraySchema.Items)
+			result.Project = func(target reflect.Value, dec Decoder) error {
+				arrayLength, err := dec.ReadArrayStart()
+				if err != nil {
+					return err
+				}
+				indirectArrayType := target.Type()
+				if indirectArrayType.Kind() == reflect.Ptr {
+					indirectArrayType = indirectArrayType.Elem()
+				}
+				array := reflect.MakeSlice(indirectArrayType, 0, 0)
+				for arrayLength > 0 {
+					arrayPart := reflect.MakeSlice(indirectArrayType, int(arrayLength), int(arrayLength))
+					var i int64
+					for ; i < arrayLength; i++ {
+						current := arrayPart.Index(int(i))
+						if err := itemProjection.Project(current, dec); err != nil {
+							return err
+						}
+					}
+					if array.Len() == 0 {
+						array = arrayPart
+					} else {
+						array = reflect.AppendSlice(array, arrayPart)
+					}
+					arrayLength, err = dec.ArrayNext()
+					if err != nil {
+						return err
+					}
+				}
+				target.Set(array)
+				return nil
+			}
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				arrayLength, err := dec.ReadArrayStart()
+				if err != nil {
+					return nil, err
+				}
+
+				var array []interface{}
+				for arrayLength > 0 {
+					arrayPart := make([]interface{}, arrayLength, arrayLength)
+					var i int64
+					for ; i < arrayLength; i++ {
+						val, err := itemProjection.Unwrap(dec)
+						if err != nil {
+							return nil, err
+						}
+						arrayPart[i] = val
+					}
+					concatArray := make([]interface{}, len(array)+int(arrayLength), cap(array)+int(arrayLength))
+					copy(concatArray, array)
+					copy(concatArray, arrayPart)
+					array = concatArray
+					arrayLength, err = dec.ArrayNext()
+					if err != nil {
+						return nil, err
+					}
+				}
+				return array, nil
+			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
+
+
+	case Map:
+		panic("TODO")
 	case Record:
 		readerRecordSchema := readerSchema.(*RecordSchema)
 		writerRecordSchema := writerSchema.(*RecordSchema)
@@ -282,7 +352,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 				if projectIndexMap[f].Unwrap == nil {
 					return nil, fmt.Errorf("TODO Unwrap for %q", field.Type)
 				}
-				if writerValue , err := projectIndexMap[f].Unwrap(dec); err != nil {
+				if writerValue, err := projectIndexMap[f].Unwrap(dec); err != nil {
 					return nil, err
 				} else if writerValue != nil {
 					if projectNameMap[f] != "" { //deleted fields don't have a mapped name
@@ -312,7 +382,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 					if projectIndexMap[f].Unwrap == nil {
 						return fmt.Errorf("TODO Unwrap for %q", field.Type)
 					}
-					if writerValue , err := projectIndexMap[f].Unwrap(dec); err != nil {
+					if writerValue, err := projectIndexMap[f].Unwrap(dec); err != nil {
 						return err
 					} else if writerValue != nil {
 						if projectNameMap[f] != "" { //deleted fields don't have a mapped name
@@ -332,7 +402,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 					if !structField.IsValid() {
 						structField = target.FieldByName(strings.Title(projectNameMap[f]))
 						if !structField.IsValid() {
-							projectIndexMap[f].Unwrap(dec)//still have to read deleted fields from the writer value
+							projectIndexMap[f].Unwrap(dec) //still have to read deleted fields from the writer value
 							continue
 						}
 					}
@@ -343,7 +413,7 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 				}
 				if len(defaultIndexMap) > 0 {
 					for d := range defaultIndexMap {
-						if field := target.FieldByName(d); field.IsValid()  {
+						if field := target.FieldByName(d); field.IsValid() {
 							field.Set(defaultIndexMap[d])
 						} else {
 							if field = target.FieldByName(strings.Title(d)); field.IsValid() {
@@ -355,7 +425,12 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 			}
 			return nil
 		}
-		//TODO case Recursive:
+	case Enum:
+		//TODO implement Enum projection once Enum representation is finalized
+		panic("enum projection not implemented yet")
+	case Recursive:
+		//TODO implement Recursive schema after clarifying how it's meant to be used
+		panic("recurive schema projection not implemented yet")
 	default:
 		panic(fmt.Errorf("not Implemented type: %v", readerSchema))
 	}
@@ -390,3 +465,5 @@ func unionProjection(reader Schema, writer *UnionSchema, variants []*Projection)
 	}
 	return result
 }
+
+//func mapArray(value []interface{})

@@ -157,6 +157,7 @@ func TestUnionAsOption(t *testing.T) {
 }
 
 func TestProjections(t *testing.T) {
+	//{ "name": "extendedEnum", "type": { "type": "enum", "name": "Animals", "symbols": ["cat", "dog"] } },
 	schemaV1 := MustParseSchema(`{ 
 					"name": "Rec", 
 					"type": "record", 
@@ -172,6 +173,7 @@ func TestProjections(t *testing.T) {
 								{ "name": "renamed", "type": "int" }
 							]
 						}},
+						{ "name": "itemChanged", "type": { "type": "array", "items": "string" } },
 						{ "name": "boolOption", "type": [ "null", "boolean" ] },
 						{ "name": "nestedOption", "type": [ 
 							"null", 
@@ -186,6 +188,7 @@ func TestProjections(t *testing.T) {
 					] 
 				}`)
 
+	//{ "name": "extendedEnum", "type": { "type": "enum", "name": "Animals", "symbols": ["cat", "dog", "tiger", "frog"] } },
 	schemaV2 := MustParseSchema(`{
 					"name": "Rec",
 					"type": "record",
@@ -205,6 +208,7 @@ func TestProjections(t *testing.T) {
 							}
 						] },
 						{ "name": "boolOption", "type": [ "null", "boolean" ] },
+						{ "name": "itemChanged", "type": { "type": "array", "items": "bytes" }, "default": ["A","B","C"] },
 						{ "name": "nestedOption", "type": { 
 							"name": "Nested", 
 							"type": "record", 
@@ -219,16 +223,17 @@ func TestProjections(t *testing.T) {
 	reader := NewDatumProjector(schemaV2, schemaV1)
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 	//test with generic records
 	genRecV1 := NewGenericRecord(schemaV1)
 	genRecV1.Set("deleted", int32(5))
 	genRecV1.Set("sum", int32(99))
 	genRecV1.Set("id", []byte("key1"))
 	genRecV1.Set("longToDouble", int64(12345))
+	genRecV1.Set("itemChanged", []string{ "K", "L", "M", "N", "O" })
 	genNestedV1 := NewGenericRecord(schemaV1.(*RecordSchema).Fields[4].Type)
 	genNestedV1.Set("renamed", int32(888))
 	genRecV1.Set("nested", genNestedV1)
+	//TODO test fixed
 	b := true
 	genRecV1.Set("boolOption", &b)
 	gen2NestedV1 := NewGenericRecord(schemaV1.(*RecordSchema).Fields[4].Type)
@@ -250,11 +255,12 @@ func TestProjections(t *testing.T) {
 	if decodedRecord.Get("key").(string) != "key1" ||
 		decodedRecord.Get("sum").(int64) != 99 ||
 		len(decodedRecord.Get("added").([]interface{})) != 3 ||
+		len(decodedRecord.Get("itemChanged").([]interface{})) != 5 ||
+		!reflect.DeepEqual(decodedRecord.Get("itemChanged").([]interface{})[4].([]byte), []byte("O")) ||
 		decodedRecord.Get("nested").(*GenericRecord).Get("newname").(int32) != 888 ||
 		decodedRecord.Get("nestedOption").(*GenericRecord).Get("newname").(int32) != 777 {
 		panic("generic projection failed")
 	}
-
 
 	//test with specific records
 	type NestedV1 struct {
@@ -264,10 +270,12 @@ func TestProjections(t *testing.T) {
 		Deleted      int32
 		Id           []byte
 		Sum          int32
+		ItemChanged  []string
 		LongToDouble int64
 		Nested       NestedV1
 		BoolOption   *bool
 		NestedOption *NestedV1
+		//ExtendedEnum *GenericEnum
 	}
 
 	type NestedV2 struct {
@@ -278,13 +286,22 @@ func TestProjections(t *testing.T) {
 		Key          string                         //renamed and promoted
 		Sum          int64                          //promoted
 		LongToDouble float64                        //promoted
+		ItemChanged  [][]byte						//array item type promoted
 		Added        []int64 `avro:default,[1,2,3]` // didn't exist
 		Nested       *NestedV2                      //was struct, now union option
 		BoolOption   *bool                          //unchanged
 		NestedOption NestedV2                       //was union option, now struct
 	}
 
-	recV1 := &RecV1{500, []byte("key1"), 1000, 12345, NestedV1{888}, &b, &NestedV1{777}}
+	recV1 := &RecV1{
+		500,
+		[]byte("key1"),
+		1000,
+		[]string {"K", "L", "M", "N", "O"} ,
+		12345,
+		NestedV1{888},
+		&b,
+		&NestedV1{777}}
 	var buf2 bytes.Buffer
 	w2 := NewSpecificDatumWriter().SetSchema(schemaV1)
 	if err := w2.Write(recV1, NewBinaryEncoder(&buf2)); err != nil {
@@ -303,6 +320,8 @@ func TestProjections(t *testing.T) {
 		len(recV2.Added) != 3 ||
 		recV2.Nested.Newname != 888 ||
 		*recV2.BoolOption != true ||
+		len(recV2.ItemChanged) != 5 ||
+		!reflect.DeepEqual(recV2.ItemChanged[4], []byte("O")) ||
 		recV2.NestedOption.Newname != 777 {
 		panic("specific projection failed")
 	}
