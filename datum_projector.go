@@ -202,6 +202,28 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		default:
 			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
+	case Enum:
+		switch writerSchema.Type() {
+		case Enum:
+			//TODO once there is an efficient schema fingerprint we can first compare the 2 enums to see whether they are same before applying expensive projection below
+			result.Unwrap = func(dec Decoder) (interface{}, error) {
+				if enumIndex, err := dec.ReadEnum(); err != nil {
+					return nil, err
+				} else {
+					writerSymbol := writerSchema.(*EnumSchema).Symbols[enumIndex]
+					//TODO it would be good to have an symbol-to-index available in EnumSchema instead of seeking for each record
+					for r, readerSymbol := range readerSchema.(*EnumSchema).Symbols {
+						if readerSymbol == writerSymbol {
+							return r, nil
+						}
+					}
+					return nil, fmt.Errorf("reader enum schema doesn't contain )")
+				}
+			}
+		default:
+			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+		}
+
 	case Array:
 		readerArraySchema := readerSchema.(*ArraySchema)
 		switch writerSchema.Type() {
@@ -495,12 +517,17 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		default:
 			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
-	case Enum:
-		//TODO implement Enum projection once Enum representation is finalized
-		panic("enum projection not implemented yet")
 	case Recursive:
-		//TODO implement Recursive schema after clarifying how it's meant to be used
-		panic("recurive schema projection not implemented yet")
+		rs := readerSchema.(*RecursiveSchema).Actual
+		switch writerSchema.Type() {
+		case Record:
+			return newProjection(rs, writerSchema.(*RecordSchema))
+		case Recursive:
+			return newProjection(rs, writerSchema.(*RecursiveSchema).Actual)
+		default:
+			panic(fmt.Errorf("impossible recurive schema projection: %v => %v", writerSchema.GetName(), readerSchema.GetName()))
+		}
+
 	default:
 		panic(fmt.Errorf("not Implemented type: %v", readerSchema))
 	}
