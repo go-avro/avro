@@ -260,6 +260,12 @@ func TestProjections(t *testing.T) {
 	gen2NestedV1.Set("renamed", int32(777))
 	genRecV1.Set("nestedOption", gen2NestedV1)
 
+	bb1 := new(bytes.Buffer)
+	genericWriterV1 := NewGenericDatumWriter().SetSchema(schemaV1)
+	if err := genericWriterV1.Write(genRecV1, NewBinaryEncoder(bb1)); err != nil {
+		panic(err)
+	}
+
 	var buf bytes.Buffer
 	w := NewGenericDatumWriter().SetSchema(genRecV1.Schema())
 	if err := w.Write(genRecV1, NewBinaryEncoder(&buf)); err != nil {
@@ -271,10 +277,9 @@ func TestProjections(t *testing.T) {
 		panic(err)
 	}
 
-	//log.Println(decodedRecord)
 	if decodedRecord.Get("key").(string) != "key1" ||
 		decodedRecord.Get("sum").(int64) != 99 ||
-		len(decodedRecord.Get("added").([]interface{})) != 3 ||
+		len(decodedRecord.Get("added").([]int64)) != 3 ||
 		len(decodedRecord.Get("itemChanged").([]interface{})) != 5 ||
 		!reflect.DeepEqual(decodedRecord.Get("itemChanged").([]interface{})[4].([]byte), []byte("O")) ||
 		decodedRecord.Get("nested").(*GenericRecord).Get("newname").(int32) != 888 ||
@@ -282,6 +287,12 @@ func TestProjections(t *testing.T) {
 		decodedRecord.Get("mapOfStrings").(map[string]interface{})["some"] != "some" ||
 		decodedRecord.Get("nestedOption").(*GenericRecord).Get("newname").(int32) != 777 {
 		panic("generic projection failed")
+	}
+
+	bb := new(bytes.Buffer)
+	genericWriterV2 := NewGenericDatumWriter().SetSchema(schemaV2)
+	if err := genericWriterV2.Write(decodedRecord, NewBinaryEncoder(bb)); err != nil {
+		panic(err)
 	}
 
 	//test with specific records
