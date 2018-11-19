@@ -1,6 +1,7 @@
 package avro
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -323,6 +324,88 @@ func TestLoadSchemas(t *testing.T) {
 	assert(t, exists, true)
 	_, exists = schemas["example.avro.foo"]
 	assert(t, exists, true)
+}
+
+func TestSchemaEquality(t *testing.T) {
+
+	s1, _ := ParseSchema(`{"type": "record", "name": "TestRecord", "hello": "world", "fields": [
+		{"name": "field1", "type": "long"},
+		{"name": "field2", "type": "string", "doc": "hello"}
+	]}`)
+	s2, _ := ParseSchema(`{"type": "record", "name": "TestRecord", "hello": "world", "fields": [
+		{"name": "field1", "type": "long", "aliases": ["f1"] },
+		{"name": "field2", "type": "string", "doc": "hello"}
+	]}`)
+	s3, _ := ParseSchema(`{"type": "record", "name": "TestRecord", "hello": "world", "fields": [
+		{"name": "field1", "type": "long", "aliases": ["f1"] },{"name": "field2", "doc": "hello", "type": "string"}
+	]}`)
+
+	s_enum1, _ := ParseSchema(`{"type":"enum", "name":"foo", "symbols":["A", "B", "C", "D"]}`)
+	s_enum2, _ := ParseSchema(`{"type":"enum", "name":"foo", "symbols":["D", "C", "B", "A"]}`)
+	s_fixed1, _ := ParseSchema(`{"type": "fixed", "size": 16, "name": "md5"}`)
+	s_fixed2, _ := ParseSchema(`{"type": "fixed", "size": 32, "name": "md5"}`)
+	s_fixedSame, _ := ParseSchema(`{"type": "fixed", "size": 16, "name": "md5", "doc": "xyz"}`)
+	assert(t, s_fixed1.Fingerprint(), s_fixedSame.Fingerprint())
+	s_array1, _ := ParseSchema(`{"type":"array", "items": "string"}`)
+	s_array2, _ := ParseSchema(`{"type":"array", "items": "long"}`)
+	s_map1, _ := ParseSchema(`{"type":"map", "values": "float"}`)
+	s_map2, _ := ParseSchema(`{"type":"map", "values": "double"}`)
+	s_union1, _ := ParseSchema(`["null", "string"]`)
+	s_union2, _ := ParseSchema(`["string", "null"]`)
+	s_union3, _ := ParseSchema(`["string", "int", "float"]`)
+
+	schemas := []Schema{
+		s1, s2,
+		s_enum1, s_enum2,
+		s_fixed1, s_fixed2,
+		s_array1, s_array2,
+		s_map1, s_map2,
+		s_union1, s_union2, s_union3,
+		new(StringSchema),
+		new(BytesSchema),
+		new(IntSchema),
+		new(LongSchema),
+		new(FloatSchema),
+		new(DoubleSchema),
+		new(BooleanSchema),
+		new(NullSchema),
+	}
+	for i := range schemas {
+		for y := range schemas {
+			if y == i {
+				assert(t, schemas[i].Fingerprint(), schemas[y].Fingerprint())
+			} else if schemas[i].Fingerprint() == schemas[y].Fingerprint() {
+				panic(fmt.Errorf("different schemas have same fingerprint: %q and %q",
+					schemas[i].GetName(), schemas[y].GetName()))
+			}
+		}
+	}
+
+	assert(t, s1.Fingerprint(), newRecursiveSchema(s1.(*RecordSchema)).Fingerprint())
+	assert(t, s2.Fingerprint(), newRecursiveSchema(s2.(*RecordSchema)).Fingerprint())
+	assert(t, s3.Fingerprint(), newRecursiveSchema(s3.(*RecordSchema)).Fingerprint())
+
+	////benchmarks
+	//f1 := calculateSchemaFingerprint(s1)
+	//f2 := calculateSchemaFingerprint(s2)
+	//f3 := calculateSchemaFingerprint(s3)
+	//fmt.Println("reflet.DeepEqual Benchmark", testing.Benchmark(func(b *testing.B) {
+	//	for i := 0; i < b.N; i++ {
+	//		reflect.DeepEqual(s1, s2)
+	//		reflect.DeepEqual(s2, s3)
+	//	}
+	//}))
+	//fmt.Println("Fingerprint Comparsion Benchmark", testing.Benchmark(func(b *testing.B) {
+	//	for i := 0; i < b.N; i++ {
+	//		if f1 == f2 {
+	//			panic("1")
+	//		}
+	//		if f2 != f3 {
+	//			panic("2")
+	//		}
+	//	}
+	//}))
+
 }
 
 func arrayEqual(arr1 []string, arr2 []string) bool {

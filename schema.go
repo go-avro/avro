@@ -1,6 +1,7 @@
 package avro
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -110,10 +111,24 @@ type Schema interface {
 
 	// Checks whether the given value is writeable to this schema.
 	Validate(v reflect.Value) bool
+
+	// Canonical formatter
+	MarshalJSON() ([]byte, error)
+
+	// Returns a pre-computed or cached fingerprint
+	Fingerprint() [32]byte
 }
 
 // StringSchema implements Schema and represents Avro string type.
 type StringSchema struct{}
+
+// Returns a pre-computed or cached fingerprint
+func (*StringSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		233, 229, 193, 201, 228, 246, 39, 115, 57, 209, 188, 222, 7, 51, 165, 155,
+		212, 47, 135, 49, 244, 73, 218, 109, 193, 48, 16, 169, 22, 147, 13, 72,
+	}
+}
 
 // Returns a JSON representation of StringSchema.
 func (*StringSchema) String() string {
@@ -148,6 +163,14 @@ func (*StringSchema) MarshalJSON() ([]byte, error) {
 
 // BytesSchema implements Schema and represents Avro bytes type.
 type BytesSchema struct{}
+
+// Returns a pre-computed or cached fingerprint
+func (*BytesSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		154, 229, 7, 169, 221, 57, 238, 91, 124, 126, 40, 93, 162, 192, 132, 101,
+		33, 200, 174, 141, 128, 254, 234, 229, 80, 78, 12, 152, 29, 83, 245, 250,
+	}
+}
 
 // String returns a JSON representation of BytesSchema.
 func (*BytesSchema) String() string {
@@ -184,6 +207,14 @@ func (*BytesSchema) MarshalJSON() ([]byte, error) {
 // IntSchema implements Schema and represents Avro int type.
 type IntSchema struct{}
 
+// Returns a pre-computed or cached fingerprint
+func (*IntSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		63, 43, 135, 169, 254, 124, 201, 177, 56, 53, 89, 140, 57, 129, 205, 69,
+		227, 227, 85, 48, 158, 80, 144, 170, 9, 51, 215, 190, 203, 111, 186, 69,
+	}
+}
+
 // String returns a JSON representation of IntSchema.
 func (*IntSchema) String() string {
 	return `{"type": "int"}`
@@ -216,6 +247,14 @@ func (*IntSchema) MarshalJSON() ([]byte, error) {
 
 // LongSchema implements Schema and represents Avro long type.
 type LongSchema struct{}
+
+// Returns a pre-computed or cached fingerprint
+func (*LongSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		195, 44, 73, 125, 246, 115, 12, 151, 250, 7, 54, 42, 165, 2, 63, 55,
+		212, 154, 2, 126, 196, 82, 54, 7, 120, 17, 76, 244, 39, 150, 90, 221,
+	}
+}
 
 // Returns a JSON representation of LongSchema.
 func (*LongSchema) String() string {
@@ -250,6 +289,14 @@ func (*LongSchema) MarshalJSON() ([]byte, error) {
 // FloatSchema implements Schema and represents Avro float type.
 type FloatSchema struct{}
 
+// Returns a pre-computed or cached fingerprint
+func (*FloatSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		30, 113, 249, 236, 5, 29, 102, 63, 86, 176, 216, 225, 252, 132, 215, 26,
+		165, 108, 207, 233, 250, 147, 170, 32, 209, 5, 71, 167, 171, 235, 92, 192,
+	}
+}
+
 // String returns a JSON representation of FloatSchema.
 func (*FloatSchema) String() string {
 	return `{"type": "float"}`
@@ -282,6 +329,14 @@ func (*FloatSchema) MarshalJSON() ([]byte, error) {
 
 // DoubleSchema implements Schema and represents Avro double type.
 type DoubleSchema struct{}
+
+// Returns a pre-computed or cached fingerprint
+func (*DoubleSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		115, 10, 154, 140, 97, 22, 129, 215, 238, 244, 66, 224, 60, 22, 199, 13,
+		19, 188, 163, 235, 139, 151, 123, 180, 3, 234, 255, 82, 23, 106, 242, 84,
+	}
+}
 
 // Returns a JSON representation of DoubleSchema.
 func (*DoubleSchema) String() string {
@@ -316,6 +371,14 @@ func (*DoubleSchema) MarshalJSON() ([]byte, error) {
 // BooleanSchema implements Schema and represents Avro boolean type.
 type BooleanSchema struct{}
 
+// Returns a pre-computed or cached fingerprint
+func (*BooleanSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		165, 176, 49, 171, 98, 188, 65, 109, 114, 12, 4, 16, 216, 2, 234, 70,
+		185, 16, 196, 251, 232, 92, 80, 169, 70, 204, 198, 88, 183, 78, 103, 126,
+	}
+}
+
 // String returns a JSON representation of BooleanSchema.
 func (*BooleanSchema) String() string {
 	return `{"type": "boolean"}`
@@ -348,6 +411,14 @@ func (*BooleanSchema) MarshalJSON() ([]byte, error) {
 
 // NullSchema implements Schema and represents Avro null type.
 type NullSchema struct{}
+
+// Returns a pre-computed or cached fingerprint
+func (*NullSchema) Fingerprint() [32]byte {
+	return [32]byte{
+		240, 114, 203, 236, 59, 248, 132, 24, 113, 212, 40, 66, 48, 197, 233, 131,
+		220, 33, 26, 86, 131, 122, 237, 134, 36, 135, 20, 143, 148, 125, 26, 31,
+	}
+}
 
 // String returns a JSON representation of NullSchema.
 func (*NullSchema) String() string {
@@ -412,6 +483,16 @@ type RecordSchema struct {
 	Aliases    []string `json:"aliases,omitempty"`
 	Properties map[string]interface{}
 	Fields     []*SchemaField `json:"fields"`
+	fingerprint *[32]byte
+}
+
+// Returns a pre-computed or cached fingerprint
+func (s *RecordSchema) Fingerprint() [32]byte {
+	if s.fingerprint == nil {
+		f := calculateSchemaFingerprint(s)
+		s.fingerprint = &f
+	}
+	return *s.fingerprint
 }
 
 // String returns a JSON representation of RecordSchema.
@@ -505,6 +586,11 @@ func (s *RecordSchema) Validate(v reflect.Value) bool {
 // RecursiveSchema implements Schema and represents Avro record type without a definition (e.g. that should be looked up).
 type RecursiveSchema struct {
 	Actual *RecordSchema
+}
+
+// Returns a pre-computed or cached fingerprint
+func (s *RecursiveSchema) Fingerprint() [32]byte {
+	return s.Actual.Fingerprint()
 }
 
 func newRecursiveSchema(parent *RecordSchema) *RecursiveSchema {
@@ -604,6 +690,16 @@ type EnumSchema struct {
 	Doc        string
 	Symbols    []string
 	Properties map[string]interface{}
+	fingerprint *[32]byte
+}
+
+// Returns a pre-computed or cached fingerprint
+func (s *EnumSchema) Fingerprint() [32]byte {
+	if s.fingerprint == nil {
+		f := calculateSchemaFingerprint(s)
+		s.fingerprint = &f
+	}
+	return *s.fingerprint
 }
 
 // String returns a JSON representation of EnumSchema.
@@ -664,6 +760,16 @@ func (s *EnumSchema) MarshalJSON() ([]byte, error) {
 type ArraySchema struct {
 	Items      Schema
 	Properties map[string]interface{}
+	fingerprint *[32]byte
+}
+
+// Returns a pre-computed or cached fingerprint
+func (s *ArraySchema) Fingerprint() [32]byte {
+	if s.fingerprint == nil {
+		f := calculateSchemaFingerprint(s)
+		s.fingerprint = &f
+	}
+	return *s.fingerprint
 }
 
 // String returns a JSON representation of ArraySchema.
@@ -720,6 +826,16 @@ func (s *ArraySchema) MarshalJSON() ([]byte, error) {
 type MapSchema struct {
 	Values     Schema
 	Properties map[string]interface{}
+	fingerprint *[32]byte
+}
+
+// Returns a pre-computed or cached fingerprint
+func (s *MapSchema) Fingerprint() [32]byte {
+	if s.fingerprint == nil {
+		f := calculateSchemaFingerprint(s)
+		s.fingerprint = &f
+	}
+	return *s.fingerprint
 }
 
 // String returns a JSON representation of MapSchema.
@@ -773,6 +889,16 @@ func (s *MapSchema) MarshalJSON() ([]byte, error) {
 // UnionSchema implements Schema and represents Avro union type.
 type UnionSchema struct {
 	Types []Schema
+	fingerprint *[32]byte
+}
+
+// Returns a pre-computed or cached fingerprint
+func (s *UnionSchema) Fingerprint() [32]byte {
+	if s.fingerprint == nil {
+		f := calculateSchemaFingerprint(s)
+		s.fingerprint = &f
+	}
+	return *s.fingerprint
 }
 
 // String returns a JSON representation of UnionSchema.
@@ -836,6 +962,16 @@ type FixedSchema struct {
 	Name       string
 	Size       int
 	Properties map[string]interface{}
+	fingerprint *[32]byte
+}
+
+// Returns a pre-computed or cached fingerprint
+func (s *FixedSchema) Fingerprint() [32]byte {
+	if s.fingerprint == nil {
+		f := calculateSchemaFingerprint(s)
+		s.fingerprint = &f
+	}
+	return *s.fingerprint
 }
 
 // String returns a JSON representation of FixedSchema.
@@ -1180,4 +1316,12 @@ func dereference(v reflect.Value) reflect.Value {
 	}
 
 	return v
+}
+
+func calculateSchemaFingerprint(s json.Marshaler) [32]byte {
+	if bytes, err := s.MarshalJSON(); err != nil {
+		panic(err)
+	} else {
+		return sha256.Sum256(bytes)
+	}
 }
