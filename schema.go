@@ -114,22 +114,22 @@ type Schema interface {
 	// Checks whether the given value is writeable to this schema.
 	Validate(v reflect.Value) bool
 
-	// Canonical representation
-	MarshalCanonicalJSON() ([]byte, error)
+	// Canonical Schema
+	Canonical() (*CanonicalSchema, error)
 
 	// Returns a pre-computed or cached fingerprint
-	Fingerprint() Fingerprint
+	Fingerprint() (*Fingerprint, error)
 }
 
 // StringSchema implements Schema and represents Avro string type.
 type StringSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*StringSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*StringSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		233, 229, 193, 201, 228, 246, 39, 115, 57, 209, 188, 222, 7, 51, 165, 155,
 		212, 47, 135, 49, 244, 73, 218, 109, 193, 48, 16, 169, 22, 147, 13, 72,
-	}
+	}, nil
 }
 
 // Returns a JSON representation of StringSchema.
@@ -158,9 +158,9 @@ func (*StringSchema) Validate(v reflect.Value) bool {
 	return ok
 }
 
-// Canonical JSON representation
-func (s *StringSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *StringSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "string"}, nil
 }
 
 // Standard JSON representation
@@ -172,11 +172,11 @@ func (*StringSchema) MarshalJSON() ([]byte, error) {
 type BytesSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*BytesSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*BytesSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		154, 229, 7, 169, 221, 57, 238, 91, 124, 126, 40, 93, 162, 192, 132, 101,
 		33, 200, 174, 141, 128, 254, 234, 229, 80, 78, 12, 152, 29, 83, 245, 250,
-	}
+	}, nil
 }
 
 // String returns a JSON representation of BytesSchema.
@@ -206,9 +206,9 @@ func (*BytesSchema) Validate(v reflect.Value) bool {
 	return v.Kind() == reflect.Slice && v.Type().Elem().Kind() == reflect.Uint8
 }
 
-// Canonical JSON representation
-func (s *BytesSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *BytesSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "bytes"}, nil
 }
 
 // Standard JSON representation
@@ -220,11 +220,11 @@ func (*BytesSchema) MarshalJSON() ([]byte, error) {
 type IntSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*IntSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*IntSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		63, 43, 135, 169, 254, 124, 201, 177, 56, 53, 89, 140, 57, 129, 205, 69,
 		227, 227, 85, 48, 158, 80, 144, 170, 9, 51, 215, 190, 203, 111, 186, 69,
-	}
+	}, nil
 }
 
 // String returns a JSON representation of IntSchema.
@@ -252,9 +252,9 @@ func (*IntSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int32
 }
 
-// Canonical JSON representation
-func (s *IntSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *IntSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "int"}, nil
 }
 
 // Standard JSON representation
@@ -266,11 +266,11 @@ func (*IntSchema) MarshalJSON() ([]byte, error) {
 type LongSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*LongSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*LongSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		195, 44, 73, 125, 246, 115, 12, 151, 250, 7, 54, 42, 165, 2, 63, 55,
 		212, 154, 2, 126, 196, 82, 54, 7, 120, 17, 76, 244, 39, 150, 90, 221,
-	}
+	}, nil
 }
 
 // Returns a JSON representation of LongSchema.
@@ -298,9 +298,9 @@ func (*LongSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int64
 }
 
-// Canonical JSON representation
-func (s *LongSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *LongSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "long"}, nil
 }
 
 // Standard JSON representation
@@ -312,11 +312,11 @@ func (*LongSchema) MarshalJSON() ([]byte, error) {
 type FloatSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*FloatSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*FloatSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		30, 113, 249, 236, 5, 29, 102, 63, 86, 176, 216, 225, 252, 132, 215, 26,
 		165, 108, 207, 233, 250, 147, 170, 32, 209, 5, 71, 167, 171, 235, 92, 192,
-	}
+	}, nil
 }
 
 // String returns a JSON representation of FloatSchema.
@@ -344,9 +344,9 @@ func (*FloatSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Float32
 }
 
-// Canonical JSON representation
-func (s *FloatSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *FloatSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "float"}, nil
 }
 
 // Standard JSON representation
@@ -358,11 +358,11 @@ func (*FloatSchema) MarshalJSON() ([]byte, error) {
 type DoubleSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*DoubleSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*DoubleSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		115, 10, 154, 140, 97, 22, 129, 215, 238, 244, 66, 224, 60, 22, 199, 13,
 		19, 188, 163, 235, 139, 151, 123, 180, 3, 234, 255, 82, 23, 106, 242, 84,
-	}
+	}, nil
 }
 
 // Returns a JSON representation of DoubleSchema.
@@ -390,9 +390,9 @@ func (*DoubleSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Float64
 }
 
-// Canonical JSON representation
-func (s *DoubleSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *DoubleSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "double"}, nil
 }
 
 // Standard JSON representation
@@ -404,11 +404,11 @@ func (*DoubleSchema) MarshalJSON() ([]byte, error) {
 type BooleanSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*BooleanSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*BooleanSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		165, 176, 49, 171, 98, 188, 65, 109, 114, 12, 4, 16, 216, 2, 234, 70,
 		185, 16, 196, 251, 232, 92, 80, 169, 70, 204, 198, 88, 183, 78, 103, 126,
-	}
+	}, nil
 }
 
 // String returns a JSON representation of BooleanSchema.
@@ -436,9 +436,9 @@ func (*BooleanSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Bool
 }
 
-// Canonical JSON representation
-func (s *BooleanSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *BooleanSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "boolean"}, nil
 }
 
 // Standard JSON representation
@@ -450,11 +450,11 @@ func (*BooleanSchema) MarshalJSON() ([]byte, error) {
 type NullSchema struct{}
 
 // Returns a pre-computed or cached fingerprint
-func (*NullSchema) Fingerprint() Fingerprint {
-	return Fingerprint{
+func (*NullSchema) Fingerprint() (*Fingerprint, error) {
+	return &Fingerprint{
 		240, 114, 203, 236, 59, 248, 132, 24, 113, 212, 40, 66, 48, 197, 233, 131,
 		220, 33, 26, 86, 131, 122, 237, 134, 36, 135, 20, 143, 148, 125, 26, 31,
-	}
+	}, nil
 }
 
 // String returns a JSON representation of NullSchema.
@@ -507,9 +507,9 @@ func (*NullSchema) Validate(v reflect.Value) bool {
 	return false
 }
 
-// Canonical JSON representation
-func (s *NullSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *NullSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Type: "null"}, nil
 }
 
 // Standard JSON representation
@@ -519,22 +519,25 @@ func (*NullSchema) MarshalJSON() ([]byte, error) {
 
 // RecordSchema implements Schema and represents Avro record type.
 type RecordSchema struct {
-	Name       string   `json:"name,omitempty"`
-	Namespace  string   `json:"namespace,omitempty"`
-	Doc        string   `json:"doc,omitempty"`
-	Aliases    []string `json:"aliases,omitempty"`
-	Properties map[string]interface{}
-	Fields     []*SchemaField `json:"fields"`
+	Name        string   `json:"name,omitempty"`
+	Namespace   string   `json:"namespace,omitempty"`
+	Doc         string   `json:"doc,omitempty"`
+	Aliases     []string `json:"aliases,omitempty"`
+	Properties  map[string]interface{}
+	Fields      []*SchemaField `json:"fields"`
 	fingerprint *Fingerprint
 }
 
 // Returns a pre-computed or cached fingerprint
-func (s *RecordSchema) Fingerprint() Fingerprint {
+func (s *RecordSchema) Fingerprint() (*Fingerprint, error) {
 	if s.fingerprint == nil {
-		f := calculateSchemaFingerprint(s)
-		s.fingerprint = &f
+		if f, err := calculateSchemaFingerprint(s); err != nil {
+			return nil, err
+		} else {
+			s.fingerprint = f
+		}
 	}
-	return *s.fingerprint
+	return s.fingerprint, nil
 }
 
 // String returns a JSON representation of RecordSchema.
@@ -547,10 +550,20 @@ func (s *RecordSchema) String() string {
 	return string(bytes)
 }
 
-// Canonical representation
-func (s*RecordSchema) MarshalCanonicalJSON()  ([]byte, error) {
-	//TODO
-	return s.MarshalJSON()
+// Canonical Schema
+func (s *RecordSchema) Canonical() (*CanonicalSchema, error) {
+	fields := make([]*CanonicalSchemaField, len(s.Fields))
+	for i, f := range s.Fields {
+		if fc, err := f.Type.Canonical(); err != nil {
+			return nil, err
+		} else {
+			fields[i] = &CanonicalSchemaField{
+				Name: f.Name,
+				Type: fc,
+			}
+		}
+	}
+	return &CanonicalSchema{Type: "record", Name: GetFullName(s), Fields: fields}, nil
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -637,7 +650,7 @@ type RecursiveSchema struct {
 }
 
 // Returns a pre-computed or cached fingerprint
-func (s *RecursiveSchema) Fingerprint() Fingerprint {
+func (s *RecursiveSchema) Fingerprint() (*Fingerprint, error) {
 	return s.Actual.Fingerprint()
 }
 
@@ -673,8 +686,8 @@ func (s *RecursiveSchema) Validate(v reflect.Value) bool {
 }
 
 // Canonical JSON representation
-func (s *RecursiveSchema) MarshalCanonicalJSON() ([]byte, error) {
-	return s.MarshalJSON()
+func (s *RecursiveSchema) Canonical() (*CanonicalSchema, error) {
+	return s.Canonical()
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
@@ -737,22 +750,25 @@ func (s *SchemaField) String() string {
 
 // EnumSchema implements Schema and represents Avro enum type.
 type EnumSchema struct {
-	Name       string
-	Namespace  string
-	Aliases    []string
-	Doc        string
-	Symbols    []string
-	Properties map[string]interface{}
+	Name        string
+	Namespace   string
+	Aliases     []string
+	Doc         string
+	Symbols     []string
+	Properties  map[string]interface{}
 	fingerprint *Fingerprint
 }
 
 // Returns a pre-computed or cached fingerprint
-func (s *EnumSchema) Fingerprint() Fingerprint {
+func (s *EnumSchema) Fingerprint() (*Fingerprint, error) {
 	if s.fingerprint == nil {
-		f := calculateSchemaFingerprint(s)
-		s.fingerprint = &f
+		if f, err := calculateSchemaFingerprint(s); err != nil {
+			return nil, err
+		} else {
+			s.fingerprint = f
+		}
 	}
-	return *s.fingerprint
+	return s.fingerprint, nil
 }
 
 // String returns a JSON representation of EnumSchema.
@@ -792,10 +808,9 @@ func (*EnumSchema) Validate(v reflect.Value) bool {
 	return true
 }
 
-// Canonical JSON representation
-func (s*EnumSchema) MarshalCanonicalJSON()  ([]byte, error) {
-	//TODO
-	return s.MarshalJSON()
+// Canonical representation
+func (s *EnumSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{Name: GetFullName(s), Type: "enum", Symbols: s.Symbols}, nil
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -817,18 +832,21 @@ func (s *EnumSchema) MarshalJSON() ([]byte, error) {
 
 // ArraySchema implements Schema and represents Avro array type.
 type ArraySchema struct {
-	Items      Schema
-	Properties map[string]interface{}
+	Items       Schema
+	Properties  map[string]interface{}
 	fingerprint *Fingerprint
 }
 
 // Returns a pre-computed or cached fingerprint
-func (s *ArraySchema) Fingerprint() Fingerprint {
+func (s *ArraySchema) Fingerprint() (*Fingerprint, error) {
 	if s.fingerprint == nil {
-		f := calculateSchemaFingerprint(s)
-		s.fingerprint = &f
+		if f, err := calculateSchemaFingerprint(s); err != nil {
+			return nil, err
+		} else {
+			s.fingerprint = f
+		}
 	}
-	return *s.fingerprint
+	return s.fingerprint, nil
 }
 
 // String returns a JSON representation of ArraySchema.
@@ -871,9 +889,12 @@ func (s *ArraySchema) Validate(v reflect.Value) bool {
 }
 
 // Canonical representation
-func (s*ArraySchema) MarshalCanonicalJSON()  ([]byte, error) {
-	//TODO
-	return s.MarshalJSON()
+func (s *ArraySchema) Canonical() (*CanonicalSchema, error) {
+	if ic, err := s.Items.Canonical(); err != nil {
+		return nil, err
+	} else {
+		return &CanonicalSchema{Type: "array", Items: ic}, nil
+	}
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -889,18 +910,21 @@ func (s *ArraySchema) MarshalJSON() ([]byte, error) {
 
 // MapSchema implements Schema and represents Avro map type.
 type MapSchema struct {
-	Values     Schema
-	Properties map[string]interface{}
+	Values      Schema
+	Properties  map[string]interface{}
 	fingerprint *Fingerprint
 }
 
 // Returns a pre-computed or cached fingerprint
-func (s *MapSchema) Fingerprint() Fingerprint {
+func (s *MapSchema) Fingerprint() (*Fingerprint, error) {
 	if s.fingerprint == nil {
-		f := calculateSchemaFingerprint(s)
-		s.fingerprint = &f
+		if f, err := calculateSchemaFingerprint(s); err != nil {
+			return nil, err
+		} else {
+			s.fingerprint = f
+		}
 	}
-	return *s.fingerprint
+	return s.fingerprint, nil
 }
 
 // String returns a JSON representation of MapSchema.
@@ -941,9 +965,12 @@ func (s *MapSchema) Validate(v reflect.Value) bool {
 }
 
 // Canonical representation
-func (s*MapSchema) MarshalCanonicalJSON()  ([]byte, error) {
-	//TODO
-	return s.MarshalJSON()
+func (s *MapSchema) Canonical() (*CanonicalSchema, error) {
+	if vc, err := s.Values.Canonical(); err != nil {
+		return nil, err
+	} else {
+		return &CanonicalSchema{Type: "array", Values: vc}, nil
+	}
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -959,17 +986,20 @@ func (s *MapSchema) MarshalJSON() ([]byte, error) {
 
 // UnionSchema implements Schema and represents Avro union type.
 type UnionSchema struct {
-	Types []Schema
+	Types       []Schema
 	fingerprint *Fingerprint
 }
 
 // Returns a pre-computed or cached fingerprint
-func (s *UnionSchema) Fingerprint() Fingerprint {
+func (s *UnionSchema) Fingerprint() (*Fingerprint, error) {
 	if s.fingerprint == nil {
-		f := calculateSchemaFingerprint(s)
-		s.fingerprint = &f
+		if f, err := calculateSchemaFingerprint(s); err != nil {
+			return nil, err
+		} else {
+			s.fingerprint = f
+		}
 	}
-	return *s.fingerprint
+	return s.fingerprint, nil
 }
 
 // String returns a JSON representation of UnionSchema.
@@ -1023,9 +1053,16 @@ func (s *UnionSchema) Validate(v reflect.Value) bool {
 }
 
 // Canonical representation
-func (s*UnionSchema) MarshalCanonicalJSON()  ([]byte, error) {
-	//TODO
-	return s.MarshalJSON()
+func (s *UnionSchema) Canonical() (*CanonicalSchema, error) {
+	ct := make([]*CanonicalSchema, len(s.Types))
+	for i, t := range s.Types {
+		if c, err := t.Canonical(); err != nil {
+			return nil, err
+		} else {
+			ct[i] = c
+		}
+	}
+	return &CanonicalSchema{Type: "union", Types: ct}, nil
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -1035,20 +1072,23 @@ func (s *UnionSchema) MarshalJSON() ([]byte, error) {
 
 // FixedSchema implements Schema and represents Avro fixed type.
 type FixedSchema struct {
-	Namespace  string
-	Name       string
-	Size       int
-	Properties map[string]interface{}
+	Namespace   string
+	Name        string
+	Size        int
+	Properties  map[string]interface{}
 	fingerprint *Fingerprint
 }
 
 // Returns a pre-computed or cached fingerprint
-func (s *FixedSchema) Fingerprint() Fingerprint {
+func (s *FixedSchema) Fingerprint() (*Fingerprint, error) {
 	if s.fingerprint == nil {
-		f := calculateSchemaFingerprint(s)
-		s.fingerprint = &f
+		if f, err := calculateSchemaFingerprint(s); err != nil {
+			return nil, err
+		} else {
+			s.fingerprint = f
+		}
 	}
-	return *s.fingerprint
+	return s.fingerprint, nil
 }
 
 // String returns a JSON representation of FixedSchema.
@@ -1089,9 +1129,12 @@ func (s *FixedSchema) Validate(v reflect.Value) bool {
 }
 
 // Canonical representation
-func (s*FixedSchema) MarshalCanonicalJSON()  ([]byte, error) {
-	//TODO
-	return s.MarshalJSON()
+func (s *FixedSchema) Canonical() (*CanonicalSchema, error) {
+	return &CanonicalSchema{
+		Type: "fixed",
+		Name: GetFullName(s),
+		Size: s.Size,
+	}, nil
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -1401,10 +1444,57 @@ func dereference(v reflect.Value) reflect.Value {
 	return v
 }
 
-func calculateSchemaFingerprint(s Schema) Fingerprint {
-	if bytes, err := s.MarshalCanonicalJSON(); err != nil {
-		panic(err)
+func calculateSchemaFingerprint(s Schema) (*Fingerprint, error) {
+	if canonical, err := s.Canonical(); err != nil {
+		return nil, err
+	} else if bytes, err := canonical.MarshalJSON(); err != nil {
+		return nil, err
 	} else {
-		return sha256.Sum256(bytes)
+		f := Fingerprint(sha256.Sum256(bytes))
+		return &f, nil
 	}
+}
+
+type CanonicalSchema struct {
+	Name    string                  `json:"name,omitempty"`
+	Type    string                  `json:"type,omitempty"`
+	Fields  []*CanonicalSchemaField `json:"fields,omitempty"`
+	Symbols []string                `json:"symbols,omitempty"`
+	Items   *CanonicalSchema        `json:"items,omitempty"`
+	Values  *CanonicalSchema        `json:"values,omitempty"`
+	Size    int                     `json:"size,omitempty"`
+	Types   []*CanonicalSchema      `json:"size,omit"`
+}
+
+type CanonicalSchemaField struct {
+	Name string           `json:"name,omitempty"`
+	Type *CanonicalSchema `json:"type,omitempty"`
+}
+
+func (c *CanonicalSchema) MarshalJSON() ([]byte, error) {
+	switch c.Type {
+	case "string", "bytes", "int", "long", "float", "double", "boolean", "null":
+		return []byte("\"" + c.Type + "\""), nil
+	case "union":
+		return json.Marshal(c.Types)
+	default:
+		return json.Marshal(struct{
+			Name    string                  `json:"name,omitempty"`
+			Type    string                  `json:"type,omitempty"`
+			Fields  []*CanonicalSchemaField `json:"fields,omitempty"`
+			Symbols []string                `json:"symbols,omitempty"`
+			Items   *CanonicalSchema        `json:"items,omitempty"`
+			Values  *CanonicalSchema        `json:"values,omitempty"`
+			Size    int                     `json:"size,omitempty"`
+		}{
+			c.Name,
+			c.Type,
+			c.Fields,
+			c.Symbols,
+			c.Items,
+			c.Values,
+			c.Size,
+		})
+	}
+
 }
