@@ -367,11 +367,11 @@ func TestSchemaEquality(t *testing.T) {
 	assert(t, f3, f4)
 
 	normal, _ := json.Marshal(s_enum1)
-	fmt.Println(string(normal))
+	assert(t, string(normal), `{"type":"enum","name":"foo","doc":"hello","symbols":["A","B","C","D"]}`)
 	canonical, _ := s_enum1.Canonical()
 	c, _ := canonical.MarshalJSON()
-	fmt.Println(string(c))
-	fmt.Println(s_enum1.Fingerprint())
+	//doc is stripped from canonical
+	assert(t, string(c),`{"name":"foo","type":"enum","symbols":["A","B","C","D"]}` )
 
 
 	schemas := []Schema{
