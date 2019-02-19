@@ -114,8 +114,8 @@ type Schema interface {
 	// Checks whether the given value is writeable to this schema.
 	Validate(v reflect.Value) bool
 
-	// Canonical formatter
-	MarshalJSON() ([]byte, error)
+	// Canonical representation
+	MarshalCanonicalJSON() ([]byte, error)
 
 	// Returns a pre-computed or cached fingerprint
 	Fingerprint() Fingerprint
@@ -158,7 +158,12 @@ func (*StringSchema) Validate(v reflect.Value) bool {
 	return ok
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *StringSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*StringSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"string"`), nil
 }
@@ -201,7 +206,12 @@ func (*BytesSchema) Validate(v reflect.Value) bool {
 	return v.Kind() == reflect.Slice && v.Type().Elem().Kind() == reflect.Uint8
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *BytesSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*BytesSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"bytes"`), nil
 }
@@ -242,7 +252,12 @@ func (*IntSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int32
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *IntSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*IntSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"int"`), nil
 }
@@ -283,7 +298,12 @@ func (*LongSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Int64
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *LongSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*LongSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"long"`), nil
 }
@@ -324,7 +344,12 @@ func (*FloatSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Float32
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *FloatSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*FloatSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"float"`), nil
 }
@@ -365,7 +390,12 @@ func (*DoubleSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Float64
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *DoubleSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*DoubleSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"double"`), nil
 }
@@ -406,7 +436,12 @@ func (*BooleanSchema) Validate(v reflect.Value) bool {
 	return reflect.TypeOf(dereference(v).Interface()).Kind() == reflect.Bool
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *BooleanSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*BooleanSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"boolean"`), nil
 }
@@ -472,7 +507,12 @@ func (*NullSchema) Validate(v reflect.Value) bool {
 	return false
 }
 
-// MarshalJSON serializes the given schema as JSON. Never returns an error.
+// Canonical JSON representation
+func (s *NullSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// Standard JSON representation
 func (*NullSchema) MarshalJSON() ([]byte, error) {
 	return []byte(`"null"`), nil
 }
@@ -505,6 +545,12 @@ func (s *RecordSchema) String() string {
 	}
 
 	return string(bytes)
+}
+
+// Canonical representation
+func (s*RecordSchema) MarshalCanonicalJSON()  ([]byte, error) {
+	//TODO
+	return s.MarshalJSON()
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -626,6 +672,11 @@ func (s *RecursiveSchema) Validate(v reflect.Value) bool {
 	return s.Actual.Validate(v)
 }
 
+// Canonical JSON representation
+func (s *RecursiveSchema) MarshalCanonicalJSON() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
 func (s *RecursiveSchema) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, s.Actual.GetName())), nil
@@ -741,6 +792,12 @@ func (*EnumSchema) Validate(v reflect.Value) bool {
 	return true
 }
 
+// Canonical JSON representation
+func (s*EnumSchema) MarshalCanonicalJSON()  ([]byte, error) {
+	//TODO
+	return s.MarshalJSON()
+}
+
 // MarshalJSON serializes the given schema as JSON.
 func (s *EnumSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
@@ -813,6 +870,12 @@ func (s *ArraySchema) Validate(v reflect.Value) bool {
 	return v.Kind() == reflect.Slice || v.Kind() == reflect.Array
 }
 
+// Canonical representation
+func (s*ArraySchema) MarshalCanonicalJSON()  ([]byte, error) {
+	//TODO
+	return s.MarshalJSON()
+}
+
 // MarshalJSON serializes the given schema as JSON.
 func (s *ArraySchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
@@ -875,6 +938,12 @@ func (s *MapSchema) Validate(v reflect.Value) bool {
 	v = dereference(v)
 
 	return v.Kind() == reflect.Map && v.Type().Key().Kind() == reflect.String
+}
+
+// Canonical representation
+func (s*MapSchema) MarshalCanonicalJSON()  ([]byte, error) {
+	//TODO
+	return s.MarshalJSON()
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -953,6 +1022,12 @@ func (s *UnionSchema) Validate(v reflect.Value) bool {
 	return false
 }
 
+// Canonical representation
+func (s*UnionSchema) MarshalCanonicalJSON()  ([]byte, error) {
+	//TODO
+	return s.MarshalJSON()
+}
+
 // MarshalJSON serializes the given schema as JSON.
 func (s *UnionSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Types)
@@ -1011,6 +1086,12 @@ func (s *FixedSchema) Validate(v reflect.Value) bool {
 	v = dereference(v)
 
 	return (v.Kind() == reflect.Array || v.Kind() == reflect.Slice) && v.Type().Elem().Kind() == reflect.Uint8 && v.Len() == s.Size
+}
+
+// Canonical representation
+func (s*FixedSchema) MarshalCanonicalJSON()  ([]byte, error) {
+	//TODO
+	return s.MarshalJSON()
 }
 
 // MarshalJSON serializes the given schema as JSON.
@@ -1320,8 +1401,8 @@ func dereference(v reflect.Value) reflect.Value {
 	return v
 }
 
-func calculateSchemaFingerprint(s json.Marshaler) Fingerprint {
-	if bytes, err := s.MarshalJSON(); err != nil {
+func calculateSchemaFingerprint(s Schema) Fingerprint {
+	if bytes, err := s.MarshalCanonicalJSON(); err != nil {
 		panic(err)
 	} else {
 		return sha256.Sum256(bytes)
