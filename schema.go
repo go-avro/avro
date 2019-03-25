@@ -687,7 +687,7 @@ func (s *RecursiveSchema) Validate(v reflect.Value) bool {
 
 // Canonical JSON representation
 func (s *RecursiveSchema) Canonical() (*CanonicalSchema, error) {
-	return s.Canonical()
+	return s.Actual.Canonical()
 }
 
 // MarshalJSON serializes the given schema as JSON. Never returns an error.
