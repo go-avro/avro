@@ -429,7 +429,9 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 						defaultValue = reflect.ValueOf(readerField.Default)
 					}
 					defaultIndexMap[readerField.Name] = defaultValue
-					defaultUnwrapperMap[readerField.Name] = defaultValue.Interface()
+					if defaultValue.IsValid() {
+						defaultUnwrapperMap[readerField.Name] = defaultValue.Interface()
+					}
 				} else {
 					delete(defaultIndexMap, readerField.Name)
 				}
@@ -506,8 +508,9 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 							if field := target.FieldByName(d); field.IsValid() {
 								field.Set(defaultIndexMap[d])
 							} else {
-								if field = target.FieldByName(strings.Title(d)); field.IsValid() {
-									field.Set(defaultIndexMap[d])
+								if field = target.FieldByName(strings.Title(d)); field.IsValid() && defaultIndexMap[d].IsValid() {
+									//default value is converted in case it is a type alias
+									field.Set(defaultIndexMap[d].Convert(field.Type()))
 								}
 							}
 						}
