@@ -430,6 +430,51 @@ func TestSchemaEquality(t *testing.T) {
 
 }
 
+func TestCanonicalConstituentOrdering(t *testing.T) {
+	var Schema17 = `{"type":"record","namespace":"domain","name":"Instr","fields":[
+	{"name": "zindex", "type": "int"},
+	{"name":"operation","type":[
+		{"type":"record","name":"REPLACE","fields":[{"name":"key","type":"string"},{"name": "data","type":"bytes"}]},
+		{"type":"record","name":"MODIFY","fields":[{"name":"key","type":"string"},{"name": "value","type":"string"}]},
+		{"type":"record","name":"DELETE","fields":[{"name":"key","type":"string"},{"name": "cascading","type":"boolean"}]}
+	]}]}`
+	var Schema18 = `{"type":"record","namespace":"domain","name":"Instr","fields":[
+	{"name": "zindex", "type": "int"},
+	{"name":"operation","type":[
+		{"type":"record","name":"MODIFY","fields":[{"name":"key","type":"string"},{"name": "value","type":"string"}]},
+		{"type":"record","name":"REPLACE","fields":[{"name":"key","type":"string"},{"name": "data","type":"bytes"}]},
+		{"type":"record","name":"DELETE","fields":[{"name":"key","type":"string"},{"name": "cascading","type":"boolean"}]}
+	]}]}`
+	var Schema19 = `{"type":"record","namespace":"domain","name":"Instr","fields":[
+	{"name":"operation","type":[
+		{"type":"record","name":"DELETE","fields":[{"name":"key","type":"string"},{"name": "cascading","type":"boolean"}]},
+		{"type":"record","name":"MODIFY","fields":[{"name":"key","type":"string"},{"name": "value","type":"string"}]},
+		{"type":"record","name":"REPLACE","fields":[{"name":"key","type":"string"},{"name": "data","type":"bytes"}]}
+	]},
+	{"name": "zindex", "type": "int"}
+]}`
+	var Schema20 = `{"type":"record","namespace":"domain","name":"Instr","fields":[
+	{"name":"operation","type":[
+		{"type":"record","name":"MODIFY","fields":[{"name":"key","type":"string"},{"name": "value","type":"string"}]},
+		{"type":"record","name":"REPLACE","fields":[{"name":"key","type":"string"},{"name": "data","type":"bytes"}]},
+		{"type":"record","name":"DELETE","fields":[{"name":"key","type":"string"},{"name": "cascading","type":"boolean"}]}
+	]},
+	{"name": "zindex", "type": "int"}
+]}`
+
+	s17 := MustParseSchema(Schema17)
+	s18 := MustParseSchema(Schema18)
+	s19 := MustParseSchema(Schema19)
+	s20 := MustParseSchema(Schema20)
+	f17,_ := s17.Fingerprint()
+	f18,_ := s18.Fingerprint()
+	f19,_ := s19.Fingerprint()
+	f20,_ := s20.Fingerprint()
+	assert(t, f17, f18)
+	assert(t, f18, f19)
+	assert(t, f19, f20)
+
+}
 func arrayEqual(arr1 []string, arr2 []string) bool {
 	if len(arr1) != len(arr2) {
 		return false

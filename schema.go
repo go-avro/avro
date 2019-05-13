@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"math"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -550,17 +551,42 @@ func (s *RecordSchema) String() string {
 	return string(bytes)
 }
 
+type FieldPair struct {
+	Index int
+	Name string
+}
+
+type FieldPairs []FieldPair
+
+func (p FieldPairs) Len() int {
+	return len(p)
+}
+func (p FieldPairs) Less(a, b int) bool {
+	return p[a].Name < p[b].Name
+}
+func (p FieldPairs) Swap(i,j int){
+	p[i], p[j] = p[j], p[i]
+}
+
 // Canonical Schema
 func (s *RecordSchema) Canonical() (*CanonicalSchema, error) {
 	fields := make([]*CanonicalSchemaField, len(s.Fields))
+	pairs := make(FieldPairs, len(s.Fields))
 	for i, f := range s.Fields {
-		if fc, err := f.Type.Canonical(); err != nil {
+		pairs[i] = FieldPair{i, f.Name}
+	}
+	sort.Sort(pairs)
+
+	i := 0
+	for _, pair := range pairs {
+		if fc, err := s.Fields[pair.Index].Type.Canonical(); err != nil {
 			return nil, err
 		} else {
 			fields[i] = &CanonicalSchemaField{
-				Name: f.Name,
+				Name: pair.Name,
 				Type: fc,
 			}
+			i += 1
 		}
 	}
 	return &CanonicalSchema{Type: "record", Name: GetFullName(s), Fields: fields}, nil
@@ -1052,11 +1078,35 @@ func (s *UnionSchema) Validate(v reflect.Value) bool {
 	return false
 }
 
+type UnionPair struct {
+	Index int
+	Type Schema
+}
+
+type UnionPairs []UnionPair
+
+func (p UnionPairs) Len() int {
+	return len(p)
+}
+func (p UnionPairs) Less(a, b int) bool {
+	return p[a].Type.GetName() < p[b].Type.GetName()
+}
+func (p UnionPairs) Swap(i,j int){
+	p[i], p[j] = p[j], p[i]
+}
+
 // Canonical representation
 func (s *UnionSchema) Canonical() (*CanonicalSchema, error) {
 	ct := make([]*CanonicalSchema, len(s.Types))
-	for i, t := range s.Types {
-		if c, err := t.Canonical(); err != nil {
+
+	pairs := make(UnionPairs, len(s.Types))
+	for i, f := range s.Types {
+		pairs[i] = UnionPair{i, f}
+	}
+	sort.Sort(pairs)
+
+	for i, pair := range pairs {
+		if c, err := pair.Type.Canonical(); err != nil {
 			return nil, err
 		} else {
 			ct[i] = c
