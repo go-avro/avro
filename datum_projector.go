@@ -69,7 +69,10 @@ func newProjection(readerSchema, writerSchema Schema) *Projection {
 		if v, err := result.Unwrap(dec); err != nil {
 			return err
 		} else {
-			target.Set(reflect.ValueOf(v))
+			rv := reflect.ValueOf(v)
+			if rv.IsValid() {
+				target.Set(rv)
+			}
 		}
 		return nil
 	}
