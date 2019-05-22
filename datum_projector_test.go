@@ -2,6 +2,7 @@ package avro
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -152,6 +153,57 @@ func TestUnionAsOption(t *testing.T) {
 		&Nest{Id: 1},
 	}
 	testSpecific(specificRecord, schema)
+
+}
+
+func TestEmptyStructRefs(t *testing.T) {
+	schema := MustParseSchema(`{
+      "type" : "record",
+      "name" : "Position",
+      "fields" : [ {
+        "name" : "front",
+        "type" : [ "null", {
+          "type" : "record",
+          "name" : "Front",
+          "fields" : [ {
+            "name" : "greeting",
+            "type" : "string",
+            "default" : "hello"
+          } ]
+        } ],
+        "default" : null
+      }, {
+        "name" : "back",
+        "type" : [ "null", {
+          "type" : "record",
+          "name" : "Back",
+          "fields" : [ {
+            "name" : "title",
+            "type" : "string"
+          } ]
+        } ],
+        "default" : null
+      } ]
+    }`)
+
+	type Position struct {
+		Front *struct {Info string}
+		Back *struct {Title string}
+	}
+
+	val1 := new(Position)
+	buffer := new(bytes.Buffer)
+	NewDatumWriter(schema).Write(val1, NewBinaryEncoder(buffer))
+	val1_ := new(Position)
+	NewDatumProjector(schema, schema).Read(val1_, NewBinaryDecoder(buffer.Bytes()))
+	if val1_.Front != nil {
+		fmt.Println(val1_.Front)
+		t.Fail()
+	}
+	if val1_.Back != nil {
+		fmt.Println(val1_.Back)
+		t.Fail()
+	}
 
 }
 
