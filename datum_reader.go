@@ -30,6 +30,7 @@ type DatumReader interface {
 var enumSymbolsToIndexCache = make(map[string]map[string]int32)
 var enumSymbolsToIndexCacheLock sync.Mutex
 
+
 // GenericEnum is a generic Avro enum representation. This is still subject to change and may be rethought.
 type GenericEnum struct {
 	// Avro enum symbols.
@@ -41,8 +42,8 @@ type GenericEnum struct {
 // NewGenericEnum returns a new GenericEnum that uses provided enum symbols.
 func NewGenericEnum(symbols []string) *GenericEnum {
 	symbolsToIndex := make(map[string]int32)
-	for index, symbol := range symbols {
-		symbolsToIndex[symbol] = int32(index)
+	for i, symbol := range symbols {
+		symbolsToIndex[symbol] = int32(i)
 	}
 
 	return &GenericEnum{
@@ -62,17 +63,19 @@ func (enum *GenericEnum) Get() string {
 }
 
 // SetIndex sets the numeric value for this enum.
-func (enum *GenericEnum) SetIndex(index int32) {
+func (enum *GenericEnum) SetIndex(index int32) *GenericEnum {
 	enum.index = index
+	return enum
 }
 
 // Set sets the string value for this enum (e.g. symbol).
 // Panics if the given symbol does not exist in this enum.
-func (enum *GenericEnum) Set(symbol string) {
+func (enum *GenericEnum) Set(symbol string) *GenericEnum {
 	if index, exists := enum.symbolsToIndex[symbol]; !exists {
 		panic("Unknown enum symbol")
 	} else {
 		enum.index = index
+		return enum
 	}
 }
 

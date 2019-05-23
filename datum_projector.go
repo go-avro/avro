@@ -232,22 +232,7 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 	case Enum:
 		switch writerSchema.Type() {
 		case Enum:
-			//TODO once there is an efficient schema fingerprint we can first compare the 2 enums to see whether they are same before applying expensive projection below
-			return &defaultProjector{
-				func(dec Decoder) (interface{}, error) {
-				if enumIndex, err := dec.ReadEnum(); err != nil {
-					return nil, err
-				} else {
-					writerSymbol := writerSchema.(*EnumSchema).Symbols[enumIndex]
-					//TODO it would be good to have a symbol-to-index available in EnumSchema instead of seeking for each record
-					for r, readerSymbol := range readerSchema.(*EnumSchema).Symbols {
-						if readerSymbol == writerSymbol {
-							return r, nil
-						}
-					}
-					return nil, fmt.Errorf("reader enum schema doesn't contain )")
-				}
-			}}
+			return newEnumProjector(readerSchema.(*EnumSchema), writerSchema.(*EnumSchema))
 		default:
 			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
 		}
@@ -297,6 +282,45 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 	}
 }
 
+func newEnumProjector(readerSchema, writerSchema *EnumSchema) projector {
+	return &enumProjector{
+		readerSymbols: readerSchema.Symbols,
+		writerSymbols: writerSchema.Symbols,
+		readerSymbolIndex: NewGenericEnum(readerSchema.Symbols).symbolsToIndex,
+	}
+
+}
+type enumProjector struct {
+	readerSymbols []string
+	writerSymbols []string
+	readerSymbolIndex map[string]int32
+}
+
+func(p *enumProjector) Unwrap(dec Decoder) (interface{}, error) {
+	if enumIndex, err := dec.ReadEnum(); err != nil {
+		return nil, err
+	} else {
+		writerSymbol := p.writerSymbols[enumIndex]
+		if readerSymbolIndex, ok := p.readerSymbolIndex[writerSymbol]; ok {
+			return readerSymbolIndex, nil
+		}
+		return nil, fmt.Errorf("reader enum schema doesn't contain )")
+	}
+}
+
+func (p *enumProjector) Project(target reflect.Value, dec Decoder) error {
+	if v, err := p.Unwrap(dec); err != nil {
+		return err
+	} else if v != nil {
+		enum := &GenericEnum{Symbols: p.readerSymbols}
+		if i, ok := v.(int32); ok {
+			enum.SetIndex(i)
+		}
+		target.Set(reflect.ValueOf(enum))
+	}
+	return nil
+}
+
 func newUnionProjector(variants map[int32]projector) projector {
 	return &unionProjector{
 		variants: variants,
@@ -319,6 +343,7 @@ func (p *unionProjector) Unwrap(dec Decoder) (interface{}, error) {
 	}
 
 }
+
 func (p *unionProjector) Project(target reflect.Value, dec Decoder) error {
 	unionIndex, err := dec.ReadInt()
 	if err != nil {
@@ -332,7 +357,7 @@ func (p *unionProjector) Project(target reflect.Value, dec Decoder) error {
 	}
 }
 
-func newArrayProjector(readerArraySchema *ArraySchema, writerArraySchema *ArraySchema) projector {
+func newArrayProjector(readerArraySchema, writerArraySchema *ArraySchema) projector {
 	return &arrayProjector{
 		itemProjector: newProjector(readerArraySchema.Items, writerArraySchema.Items),
 	}
@@ -404,7 +429,7 @@ func (p *arrayProjector) Project(target reflect.Value, dec Decoder) error {
 	return nil
 }
 
-func newMapProjector(readerMapSchema *MapSchema, writerMapSchema *MapSchema) projector {
+func newMapProjector(readerMapSchema, writerMapSchema *MapSchema) projector {
 	return &mapProjector{
 		keyProjector:   newProjector(&StringSchema{}, &StringSchema{}),
 		valueProjector: newProjector(readerMapSchema.Values, writerMapSchema.Values),

@@ -665,6 +665,10 @@ func (s *EnumSchema) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (s *EnumSchema) Value(symbol string) *GenericEnum {
+	return NewGenericEnum(s.Symbols).Set(symbol)
+}
+
 // ArraySchema implements Schema and represents Avro array type.
 type ArraySchema struct {
 	Items      Schema

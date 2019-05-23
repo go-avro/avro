@@ -2,7 +2,6 @@ package avro
 
 import (
 	"bytes"
-	"fmt"
 	"reflect"
 	"testing"
 )
@@ -183,28 +182,39 @@ func TestEmptyStructRefs(t *testing.T) {
           } ]
         } ],
         "default" : null
-      } ]
+      }, {
+         "name": "Enum",
+		 "type": {
+			"name": "MyEnum",
+			"type": "enum",
+			"symbols": [ "A", "B", "C" ],
+			"default": "A"
+		 }
+	  } ]
     }`)
 
 	type Position struct {
 		Front *struct {Info string}
 		Back *struct {Title string}
+		Enum *GenericEnum
 	}
 
-	val1 := new(Position)
+	var MyEnum = EnumSchema{Symbols: []string{"A", "B", "C"}}
+
+	val1 := &Position{ Enum: MyEnum.Value("B")}
 	buffer := new(bytes.Buffer)
 	NewDatumWriter(schema).Write(val1, NewBinaryEncoder(buffer))
 	val1_ := new(Position)
 	NewDatumProjector(schema, schema).Read(val1_, NewBinaryDecoder(buffer.Bytes()))
 	if val1_.Front != nil {
-		fmt.Println(val1_.Front)
 		t.Fail()
 	}
 	if val1_.Back != nil {
-		fmt.Println(val1_.Back)
 		t.Fail()
 	}
-
+	if val1_.Enum.Get() != "B" {
+		t.Fail()
+	}
 }
 
 func TestProjections(t *testing.T) {
