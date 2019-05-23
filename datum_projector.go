@@ -7,10 +7,13 @@ import (
 	"strings"
 )
 
-func NewDatumProjector(readerSchema, writerSchema Schema) *DatumProjector {
-	//TODO check cache for the same combination of schemas
-	return &DatumProjector{
-		projector: newProjector(readerSchema, writerSchema),
+func NewDatumProjector(readerSchema, writerSchema Schema) (*DatumProjector, error) {
+	if p, err := newProjector(readerSchema, writerSchema); err != nil {
+		return nil, err
+	} else {
+		return &DatumProjector{
+			projector: p,
+		}, nil
 	}
 }
 
@@ -56,32 +59,41 @@ func (p *defaultProjector) Unwrap(dec Decoder) (interface{}, error) {
 	return p.unwrap(dec)
 }
 
-func newProjector(readerSchema, writerSchema Schema) projector {
+func newProjector(readerSchema, writerSchema Schema) (projector, error) {
 
 	if writerSchema.Type() == Union {
 		if readerSchema.Type() == Union {
 			writerUnionSchema := writerSchema.(*UnionSchema)
 			variants := make(map[int32]projector)
 			for i, t := range writerUnionSchema.Types {
-				variants[int32(i)] = newProjector(t, t)
+				if p, err := newProjector(t, t); err != nil {
+					return nil, err
+				} else {
+					variants[int32(i)] = p
+				}
 			}
 			return newUnionProjector(variants)
 		} else {
 			for i, t := range writerSchema.(*UnionSchema).Types {
 				if t.Type() == readerSchema.Type() && t.GetName() == readerSchema.GetName() {
 					variants := make(map[int32]projector)
-					variants[int32(i)] = newProjector(readerSchema, t)
+					if p, err := newProjector(readerSchema, t); err != nil {
+						return nil, err
+					} else {
+						variants[int32(i)] = p
+					}
 					return newUnionProjector(variants)
 				}
 			}
-			panic(fmt.Errorf("writer Union does not match reader schema: %v", readerSchema))
+			return nil, fmt.Errorf("writer Union does not match reader schema: %v", readerSchema)
 		}
 	} else if readerSchema.Type() == Union {
 		for _, t := range readerSchema.(*UnionSchema).Types {
-			if t.Type() == writerSchema.Type() && t.GetName() == writerSchema.GetName() {
-				return newProjector(t, writerSchema)
+			if p, err := newProjector(t, writerSchema); err == nil {
+				return p, nil
 			}
 		}
+		return nil, fmt.Errorf("reader Union does not contain the writer schema: %v", writerSchema)
 	}
 
 	switch readerSchema.Type() {
@@ -91,9 +103,9 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return nil, nil
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 	case Boolean:
 		switch writerSchema.Type() {
@@ -101,9 +113,9 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return dec.ReadBoolean()
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 
 	case Int:
@@ -112,9 +124,9 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return dec.ReadInt()
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 
 	case Long:
@@ -123,15 +135,15 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return dec.ReadLong()
-			}}
+			}}, nil
 		case Int:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadInt()
 				return int64(v), err
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 	case Float:
 		switch writerSchema.Type() {
@@ -139,21 +151,21 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return dec.ReadFloat()
-			}}
+			}}, nil
 		case Int:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadInt()
 				return float32(v), err
-			}}
+			}}, nil
 		case Long:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadLong()
 				return float32(v), err
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 
 	case Double:
@@ -162,27 +174,27 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return dec.ReadDouble()
-			}}
+			}}, nil
 		case Int:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadInt()
 				return float64(v), err
-			}}
+			}}, nil
 		case Long:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadLong()
 				return float64(v), err
-			}}
+			}}, nil
 		case Float:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadFloat()
 				return float64(v), err
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 	case Bytes:
 		switch writerSchema.Type() {
@@ -190,15 +202,15 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return dec.ReadBytes()
-			}}
+			}}, nil
 		case String:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadString()
 				return []byte(v), err
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 
 	case String:
@@ -207,15 +219,15 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				return dec.ReadString()
-			}}
+			}}, nil
 		case Bytes:
 			return &defaultProjector{
 				func(dec Decoder) (interface{}, error) {
 				v, err := dec.ReadBytes()
 				return string(v), err
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 	case Fixed:
 		size := writerSchema.(*FixedSchema).Size
@@ -225,16 +237,16 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 				func(dec Decoder) (interface{}, error) {
 				fixed := make([]byte, size)
 				return fixed, dec.ReadFixed(fixed)
-			}}
+			}}, nil
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 	case Enum:
 		switch writerSchema.Type() {
 		case Enum:
 			return newEnumProjector(readerSchema.(*EnumSchema), writerSchema.(*EnumSchema))
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 
 	case Array:
@@ -244,7 +256,7 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			writerArraySchema := writerSchema.(*ArraySchema)
 			return newArrayProjector(readerArraySchema, writerArraySchema)
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 
 	case Map:
@@ -255,7 +267,7 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			return newMapProjector(readerMapSchema, writerMapSchema)
 
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 	case Record:
 		readerRecordSchema := readerSchema.(*RecordSchema)
@@ -264,7 +276,7 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 			writerRecordSchema := writerSchema.(*RecordSchema)
 			return newRecordProjector(readerRecordSchema, writerRecordSchema)
 		default:
-			panic(fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema))
+			return nil, fmt.Errorf("impossible projection from %q to %q", writerSchema, readerSchema)
 		}
 	case Recursive:
 		rs := readerSchema.(*RecursiveSchema).Actual
@@ -274,20 +286,20 @@ func newProjector(readerSchema, writerSchema Schema) projector {
 		case Recursive:
 			return newProjector(rs, writerSchema.(*RecursiveSchema).Actual)
 		default:
-			panic(fmt.Errorf("impossible recurive schema projection: %v => %v", writerSchema.GetName(), readerSchema.GetName()))
+			return nil, fmt.Errorf("impossible recurive schema projection: %v => %v", writerSchema.GetName(), readerSchema.GetName())
 		}
 
 	default:
-		panic(fmt.Errorf("not Implemented type: %v", readerSchema))
+		return nil, fmt.Errorf("not Implemented type: %v", readerSchema)
 	}
 }
 
-func newEnumProjector(readerSchema, writerSchema *EnumSchema) projector {
+func newEnumProjector(readerSchema, writerSchema *EnumSchema) (projector, error) {
 	return &enumProjector{
 		readerSymbols: readerSchema.Symbols,
 		writerSymbols: writerSchema.Symbols,
 		readerSymbolIndex: NewGenericEnum(readerSchema.Symbols).symbolsToIndex,
-	}
+	}, nil
 
 }
 type enumProjector struct {
@@ -321,10 +333,10 @@ func (p *enumProjector) Project(target reflect.Value, dec Decoder) error {
 	return nil
 }
 
-func newUnionProjector(variants map[int32]projector) projector {
+func newUnionProjector(variants map[int32]projector) (projector, error) {
 	return &unionProjector{
 		variants: variants,
-	}
+	}, nil
 }
 
 type unionProjector struct {
@@ -357,9 +369,13 @@ func (p *unionProjector) Project(target reflect.Value, dec Decoder) error {
 	}
 }
 
-func newArrayProjector(readerArraySchema, writerArraySchema *ArraySchema) projector {
-	return &arrayProjector{
-		itemProjector: newProjector(readerArraySchema.Items, writerArraySchema.Items),
+func newArrayProjector(readerArraySchema, writerArraySchema *ArraySchema) (projector, error) {
+	if itemProjector, err := newProjector(readerArraySchema.Items, writerArraySchema.Items); err != nil {
+		return nil, err
+	} else {
+		return &arrayProjector{
+			itemProjector: itemProjector,
+		}, nil
 	}
 }
 
@@ -429,10 +445,16 @@ func (p *arrayProjector) Project(target reflect.Value, dec Decoder) error {
 	return nil
 }
 
-func newMapProjector(readerMapSchema, writerMapSchema *MapSchema) projector {
-	return &mapProjector{
-		keyProjector:   newProjector(&StringSchema{}, &StringSchema{}),
-		valueProjector: newProjector(readerMapSchema.Values, writerMapSchema.Values),
+func newMapProjector(readerMapSchema, writerMapSchema *MapSchema) (projector, error) {
+	if keyProjector, err := newProjector(&StringSchema{}, &StringSchema{}); err != nil {
+		return nil, err
+	} else if valueProjector, err := newProjector(readerMapSchema.Values, writerMapSchema.Values); err != nil {
+		return nil, err
+	} else {
+		return &mapProjector{
+			keyProjector:   keyProjector,
+			valueProjector: valueProjector,
+		}, nil
 	}
 }
 
@@ -504,7 +526,7 @@ func (p *mapProjector) Project(target reflect.Value, dec Decoder) error {
 	return nil
 }
 
-func newRecordProjector(readerRecordSchema, writerRecordSchema *RecordSchema) projector {
+func newRecordProjector(readerRecordSchema, writerRecordSchema *RecordSchema) (projector, error) {
 	p := &RecordProjector{
 		defaultUnwrapperMap: make(map[string]interface{}, 0),
 		defaultIndexMap:     make(map[string]reflect.Value, 0),
@@ -521,7 +543,11 @@ NextReaderField:
 			if writerField.Name == readerField.Name {
 				p.defaultIndexMap[readerField.Name] = reflect.ValueOf(nil)
 				p.projectNameMap[w] = readerField.Name
-				p.projectIndexMap[w] = newProjector(readerField.Type, writerField.Type)
+				if fieldProjector, err := newProjector(readerField.Type, writerField.Type); err != nil {
+					return nil, err
+				} else {
+					p.projectIndexMap[w] = fieldProjector
+				}
 				continue NextReaderField
 			}
 		}
@@ -531,13 +557,21 @@ NextReaderField:
 				if writerField.Name == intoFieldAlias {
 					p.defaultIndexMap[readerField.Name] = reflect.ValueOf(nil)
 					p.projectNameMap[w] = readerField.Name
-					p.projectIndexMap[w] = newProjector(readerField.Type, writerField.Type)
+					if fieldProjector, err := newProjector(readerField.Type, writerField.Type); err != nil {
+						return nil, err
+					} else {
+						p.projectIndexMap[w] = fieldProjector
+					}
 					continue NextReaderField
 				}
 			}
 		}
 		//removed fields
-		p.projectIndexMap[w] = newProjector(writerField.Type, writerField.Type)
+		if fieldProjector, err := newProjector(writerField.Type, writerField.Type); err != nil {
+			return nil, err
+		} else {
+			p.projectIndexMap[w] = fieldProjector
+		}
 	}
 
 	//prepare default values
@@ -559,10 +593,10 @@ NextReaderField:
 								defaultValue.Index(i).Set(reflect.ValueOf(int64(x.(float64))))
 							}
 						default:
-							panic(fmt.Errorf("TODO default converter from %q", reflect.TypeOf(a[0])))
+							return nil, fmt.Errorf("TODO default converter from %q", reflect.TypeOf(a[0]))
 						}
 					default:
-						panic(fmt.Errorf("TODO default converter to %q", readerField.Type.(*ArraySchema).Items))
+						return nil, fmt.Errorf("TODO default converter to %q", readerField.Type.(*ArraySchema).Items)
 					}
 
 				}
@@ -578,7 +612,7 @@ NextReaderField:
 		}
 	}
 
-	return p
+	return p, nil
 }
 
 type RecordProjector struct {

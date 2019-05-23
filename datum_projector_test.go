@@ -205,16 +205,22 @@ func TestEmptyStructRefs(t *testing.T) {
 	buffer := new(bytes.Buffer)
 	NewDatumWriter(schema).Write(val1, NewBinaryEncoder(buffer))
 	val1_ := new(Position)
-	NewDatumProjector(schema, schema).Read(val1_, NewBinaryDecoder(buffer.Bytes()))
-	if val1_.Front != nil {
-		t.Fail()
+	if reader, err := NewDatumProjector(schema, schema); err != nil {
+		panic(err)
+	} else if err := reader.Read(val1_, NewBinaryDecoder(buffer.Bytes())); err != nil {
+		panic(err)
+	} else {
+		if val1_.Front != nil {
+			t.Fail()
+		}
+		if val1_.Back != nil {
+			t.Fail()
+		}
+		if val1_.Enum.Get() != "B" {
+			t.Fail()
+		}
 	}
-	if val1_.Back != nil {
-		t.Fail()
-	}
-	if val1_.Enum.Get() != "B" {
-		t.Fail()
-	}
+
 }
 
 func TestProjections(t *testing.T) {
@@ -301,7 +307,10 @@ func TestProjections(t *testing.T) {
 				}`)
 
 	//same projector can read generic as well as specific records, depending on which type is passed to .Read
-	reader := NewDatumProjector(schemaV2, schemaV1)
+	reader, err := NewDatumProjector(schemaV2, schemaV1)
+	if err != nil {
+		panic(err)
+	}
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	//test with generic records
