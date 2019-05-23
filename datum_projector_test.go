@@ -156,6 +156,7 @@ func TestUnionAsOption(t *testing.T) {
 }
 
 func TestEmptyStructRefs(t *testing.T) {
+
 	schema := MustParseSchema(`{
       "type" : "record",
       "name" : "Position",
@@ -190,33 +191,62 @@ func TestEmptyStructRefs(t *testing.T) {
 			"symbols": [ "A", "B", "C" ],
 			"default": "A"
 		 }
-	  } ]
+	  }, {
+         "name" : "optionalEnum",
+         "type" : [ "null", {
+           "type" : "enum",
+           "name" : "StorageType",
+           "symbols" : [ "ssd", "hdd" ]
+         } ],
+         "default" : null
+      } ]
     }`)
 
 	type Position struct {
 		Front *struct {Info string}
 		Back *struct {Title string}
 		Enum *GenericEnum
+		OptionalEnum *GenericEnum
 	}
 
 	var MyEnum = EnumSchema{Symbols: []string{"A", "B", "C"}}
 
-	val1 := &Position{ Enum: MyEnum.Value("B")}
+	val0 := &Position{
+		Enum: MyEnum.Value("B"),
+
+	}
 	buffer := new(bytes.Buffer)
-	NewDatumWriter(schema).Write(val1, NewBinaryEncoder(buffer))
-	val1_ := new(Position)
-	if reader, err := NewDatumProjector(schema, schema); err != nil {
-		panic(err)
-	} else if err := reader.Read(val1_, NewBinaryDecoder(buffer.Bytes())); err != nil {
+	NewDatumWriter(schema).Write(val0, NewBinaryEncoder(buffer))
+
+	val1reader := NewGenericDatumReader().SetSchema(schema)
+	val1 := NewGenericRecord(schema)
+	if err := val1reader.Read(val1, NewBinaryDecoder(buffer.Bytes())); err != nil {
 		panic(err)
 	} else {
-		if val1_.Front != nil {
+		assert(t, `{"Enum":"B","back":null,"front":null,"optionalEnum":null}`, val1.String())
+	}
+
+	val2 := new(Position)
+	if err := NewDatumReader(schema).Read(val2, NewBinaryDecoder(buffer.Bytes())); err != nil {
+		panic(err)
+	}
+
+	val3 := new(Position)
+	if reader, err := NewDatumProjector(schema, schema); err != nil {
+		panic(err)
+	} else if err := reader.Read(val3, NewBinaryDecoder(buffer.Bytes())); err != nil {
+		panic(err)
+	} else {
+		if val3.Front != nil {
 			t.Fail()
 		}
-		if val1_.Back != nil {
+		if val3.Back != nil {
 			t.Fail()
 		}
-		if val1_.Enum.Get() != "B" {
+		if val3.Enum.Get() != "B" {
+			t.Fail()
+		}
+		if val3.OptionalEnum != nil {
 			t.Fail()
 		}
 	}

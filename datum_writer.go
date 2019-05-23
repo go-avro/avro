@@ -521,17 +521,13 @@ func (writer *GenericDatumWriter) writeMap(v interface{}, enc Encoder, s Schema)
 }
 
 func (writer *GenericDatumWriter) writeEnum(v interface{}, enc Encoder, s Schema) error {
-	switch v.(type) {
+	switch value := v.(type) {
 	case *GenericEnum:
 		{
-			rs := s.(*EnumSchema)
-			for i := range rs.Symbols {
-				if rs.Name == rs.Symbols[i] {
-					err := writer.writeInt(i, enc)
-					if err != nil {
-						return err
-					}
-					break
+			if i, ok := value.symbolsToIndex[value.Get()]; ok {
+				err := writer.writeInt(int32(i), enc)
+				if err != nil {
+					return err
 				}
 			}
 		}
@@ -540,6 +536,7 @@ func (writer *GenericDatumWriter) writeEnum(v interface{}, enc Encoder, s Schema
 			rs := s.(*EnumSchema)
 			for i := range rs.Symbols {
 				if v.(string) == rs.Symbols[i] {
+					fmt.Println("Writing from string", int32(i))
 					enc.WriteInt(int32(i))
 					break
 				}

@@ -638,7 +638,7 @@ func TestEnumNegativeRegression(t *testing.T) {
 
 	buf = []byte{0x78} // This is the encoding of the varint 60
 	err = reader.Read(genericDest, NewBinaryDecoder(buf))
-	assert(t, err.Error(), "Enum index invalid!")
+	assert(t, err.Error(), "Enum index invalid! 60 from: [HEART SPADE CLUB]")
 
 	playingCard.Type = nil
 	err = reader.Read(&playingCard, NewBinaryDecoder(buf))
