@@ -47,7 +47,7 @@ func TestDataFileWriter(t *testing.T) {
 	assert(t, len(encoded), 1145)
 
 	// now make sure we can decode again
-	dfr, err := newDataFileReader(bytes.NewReader(encoded))
+	dfr, err := NewDataFileReader_IoReader(bytes.NewReader(encoded))
 	if err != nil {
 		t.Fatal(err)
 	}

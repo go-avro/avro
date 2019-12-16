@@ -90,7 +90,7 @@ func NewDataFileReader(filename string, ignoreMe ...DatumReader) (*DataFileReade
 		return nil, err
 	}
 
-	reader, err := newDataFileReader(f)
+	reader, err := NewDataFileReader_IoReader(f)
 	if err != nil {
 		// If there's any decoding issues, try not leaking a file handle.
 		f.Close()
@@ -99,7 +99,7 @@ func NewDataFileReader(filename string, ignoreMe ...DatumReader) (*DataFileReade
 
 }
 
-func newDataFileReader(input io.Reader) (reader *DataFileReader, err error) {
+func NewDataFileReader_IoReader(input io.Reader) (reader *DataFileReader, err error) {
 	dec := NewBinaryDecoderReader(input) // Since dec doesn't buffer, we can share it.
 	reader = &DataFileReader{
 		sharedCopyBuf: make([]byte, 4096),
