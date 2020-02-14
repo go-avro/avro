@@ -396,7 +396,7 @@ func (codegen *CodeGenerator) writeStructUnionType(schema *UnionSchema, buffer *
 	var unionType Schema
 	if schema.Types[0].Type() == Null {
 		unionType = schema.Types[1]
-	} else if schema.Types[1].Type() == Null {
+	} else if len(schema.Types) == 1 || schema.Types[1].Type() == Null {
 		unionType = schema.Types[0]
 	}
 
@@ -473,7 +473,7 @@ func (codegen *CodeGenerator) writeStructConstructorFieldValue(info *recordSchem
 		}
 	case *IntSchema:
 		{
-			defaultValue, ok := field.Default.(float64)
+			defaultValue, ok := field.Default.(int32)
 			if !ok {
 				return fmt.Errorf("Invalid default value for %s field of type %s", field.Name, field.Type.GetName())
 			}
@@ -481,7 +481,7 @@ func (codegen *CodeGenerator) writeStructConstructorFieldValue(info *recordSchem
 		}
 	case *LongSchema:
 		{
-			defaultValue, ok := field.Default.(float64)
+			defaultValue, ok := field.Default.(int64)
 			if !ok {
 				return fmt.Errorf("Invalid default value for %s field of type %s", field.Name, field.Type.GetName())
 			}
