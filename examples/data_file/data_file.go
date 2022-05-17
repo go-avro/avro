@@ -21,18 +21,18 @@ import (
 	"gopkg.in/avro.v0"
 )
 
-// Fields to map should be exported
+// Fields to map should be exported, field names specified
 type SomeComplexType struct {
-	StringArray []string
-	LongArray   []int64
-	EnumField   *avro.GenericEnum
-	MapOfInts   map[string]int32
-	UnionField  string
-	FixedField  []byte
-	RecordField *SomeAnotherType
+	StringArray []string          `avro:"stringArray"`
+	LongArray   []int64           `avro:"longArray"`
+	EnumField   *avro.GenericEnum `avro:"enumField"`
+	MapOfInts   map[string]int32  `avro:"mapOfInts"`
+	UnionField  string            `avro:"unionField"`
+	FixedField  []byte            `avro:"fixedField"`
+	RecordField *SomeAnotherType  `avro:"recordField"`
 }
 
-// Fields to map should be exported here as well
+// Fields to map should be exported here as well, matched by similarity
 type SomeAnotherType struct {
 	LongRecordField   int64
 	StringRecordField string
@@ -41,22 +41,37 @@ type SomeAnotherType struct {
 }
 
 func main() {
-	// Provide a filename to read and a DatumReader to manage the reading itself
-	specificReader, err := avro.NewDataFileReader("complex.avro")
+	schema, err := avro.ParseSchemaFile("schema.json")
 	if err != nil {
 		// Should not actually happen
 		panic(err)
 	}
 
-	for specificReader.HasNext() {
+	// Create a specific DatumReader and set schema
+	datum := avro.NewSpecificDatumReader()
+	datum.SetSchema(schema)
+
+	// Provide a filename to read and a DatumReader to manage the reading itself
+	specificReader, err := avro.NewDataFileReader("complex.avro", datum)
+	if err != nil {
+		// Should not actually happen
+		panic(err)
+	}
+
+	for {
 		// Note: should ALWAYS pass in a pointer, e.g. specificReader.Next(SomeComplexType{}) will NOT work
 		obj := new(SomeComplexType)
-		err := specificReader.Next(obj)
+		ok, err := specificReader.Next(obj)
+		if !ok {
+			fmt.Println("END")
+			break
+		}
 		if err != nil {
 			panic(err)
 			break
 		} else {
-			fmt.Printf("%#v\n", obj)
+			fmt.Printf("obj: %#v\n", *obj)
+			fmt.Printf("obj.RecordField: %#v\n", *obj.RecordField)
 		}
 	}
 }
